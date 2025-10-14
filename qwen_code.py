@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Callable
 
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
 
 def install_dependencies():
     """Install required packages if not available.

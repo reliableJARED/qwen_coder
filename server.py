@@ -11,7 +11,7 @@ from qwen_code import SimpleQwen  # Assuming qwen_code.py is in the same directo
 
 
 # try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS to help with mem availibility.
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
 
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for React development

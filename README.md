@@ -88,11 +88,14 @@ You can now run the server
 python server.py
 ```
 ## Screen Shots
-Basic Chat
+Base Chat UI - Conversation History on left column
 ![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot1.png)
 
-File Context
+File Context - Right column add/subtract files
 ![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot2.png)
+
+Update the System Promp
+![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot3.png)
 
 ## Troubleshooting
 
