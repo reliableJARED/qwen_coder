@@ -310,7 +310,7 @@ def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
     print(f"Downloading {model_name} for offline use...")
     torch, AutoModelForCausalLM, AutoTokenizer = install_dependencies()
     
-    model = AutoModelForCausalLM.from_pretrained(model_name, dtype="auto")
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
     model.save_pretrained(save_path)
