@@ -80,6 +80,15 @@ then get the rest of the requirements.
 
 Done!
 
+## Initial Run - Trigger Download of Qwen 2.5 Code Instruct
+
+You can now run the server
+
+```bash
+python qwen_code.py
+```
+This is a big 5GB file.  After the download you can ctrl+c and close the run (it's just a CLI implementation of Qwen Code)
+
 ## Run the Server
 
 You can now run the server
