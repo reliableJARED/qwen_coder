@@ -89,10 +89,10 @@ python server.py
 ```
 ## Screen Shots
 Basic Chat
-![Screenshot](https://github.com/reliableJARED/qwen_coder/raw/master/screenshots/screenshot1.png)
+![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot1.png)
 
 File Context
-![Screenshot](https://github.com/reliableJARED/qwen_coder/raw/master/screenshots/screenshot2.png)
+![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot2.png)
 
 ## Troubleshooting
 
