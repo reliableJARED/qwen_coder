@@ -86,7 +86,7 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
         print(f"Loading model from: {local_path}")
         model = AutoModelForCausalLM.from_pretrained(
             local_path,
-            dtype="auto",
+            torch_dtype="auto",
             device_map="auto",
             local_files_only=True
         )
@@ -98,7 +98,7 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
         print(f"Loading {model_name} (will download if needed)...")
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            dtype="auto",
+            torch_dtype="auto",
             device_map="auto"
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
