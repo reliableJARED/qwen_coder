@@ -1,0 +1,5 @@
+# For CUDA 12.8 on 5000 series GPUs and later must use not yet pip published  build
+--index-url https://download.pytorch.org/whl/cu128
+torch
+torchaudio
+torchvision

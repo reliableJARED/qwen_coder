@@ -1,0 +1,10 @@
+
+# Ignore the 'chat_sessions' directory and its contents
+chat_sessions/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Virtual environment
+qcode/
