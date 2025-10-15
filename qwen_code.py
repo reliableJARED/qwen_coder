@@ -7,23 +7,13 @@ import socket
 import time
 import gc
 from typing import List, Dict, Any, Callable
-
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
-
-def install_dependencies():
-    """Install required packages if not available.
-    LEGACY: This is a legacy function, prefer using requirements.txt and a virtual environment."""
-    try:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-    except ImportError:
-        print("Error dependencies missing, run requirements.txt ...")
-        
-    return torch, AutoModelForCausalLM, AutoTokenizer
 
 def check_internet():
     """Check if internet connection is available."""
@@ -70,11 +60,12 @@ def validate_model_files(model_path):
     
     return len(model_files) > 0
 
-
 def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False):
     """Load model and tokenizer with offline support."""
-    torch, AutoModelForCausalLM, AutoTokenizer = install_dependencies()
-    
+    #check if we have the model downloaded already
+    print(f"Checking for model {model_name}...")
+    _ = download_model(model_name)  # Attempt to download if not present
+
     # Check if we should use online or offline mode
     if force_offline or not check_internet():
         print("Using offline mode...")
@@ -321,32 +312,44 @@ class SimpleQwen:
 
 def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
     """Download model for offline use."""
+    import multiprocessing
+    
+    #Not really needed to specify a save path since we are just caching in huggingface cache
+    #but if you want to save to a specific path, uncomment in the download_thread function
     save_path = f"./{model_name.split('/')[-1]}"
     
-    print(f"Downloading {model_name} for offline use...")
-    torch, AutoModelForCausalLM, AutoTokenizer = install_dependencies()
+    #do this to put in a separate process to avoid memory bloat in the main process
+    #will use more total memory but avoid fragmentation in the main process
+    #auto deletes when process ends
+    download_process = multiprocessing.Process(target=download_thread, args=(model_name,save_path))
+    download_process.start()
     
+    # Wait for the process to complete
+    download_process.join()
+    return True
+
+def download_thread(model_name,save_path):
+    """Thread target for downloading model."""
+    #auto downloads the model if we don't have it.
     model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
-    model.save_pretrained(save_path)
-    tokenizer.save_pretrained(save_path)
+    #don't use this unless you need a save path isn't the huggingface hub default directory
+    #model.save_pretrained(save_path)
+    #tokenizer.save_pretrained(save_path)
+    #print(f"Model downloaded to: {save_path}")
+    #return save_path
+    return  # just download and cache in huggingface cache
     
-    print(f"Model downloaded to: {save_path}")
-
 # Example usage
 if __name__ == "__main__":
     import time
-    # Handle command line arguments
-    if len(sys.argv) > 1 and sys.argv[1] == "download":
-        model_name = sys.argv[2] if len(sys.argv) > 2 else "Qwen/Qwen2.5-Coder-7B-Instruct"
-        download_model(model_name)
-        sys.exit()
     
-    force_offline = len(sys.argv) > 1 and sys.argv[1] == "offline"
-    
-    # Initialize chat
-    chat = SimpleQwen(force_offline=force_offline)
+    # Limit to specific GPU because this is a 7B model and fits on one 16GB GPU. Adjust as needed.
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+    # Initialize chat, Load model (will download if not present)
+    chat = SimpleQwen(model_name="Qwen/Qwen2.5-Coder-7B-Instruct",force_offline=True)
     
     # Example tool
     def get_weather(args):
@@ -358,10 +361,8 @@ if __name__ == "__main__":
     chat.register_tool(get_weather, description="Get current weather for a location")
     
     # Chat loop
-    print("Chat started! Type 'quit' to exit.")
-    print("Commands:")
-    print("  python script.py download - Download model for offline use")
-    print("  python script.py offline - Force offline mode")
+    print("Chat started! Type 'quit' or 'exit' to end.")
+   
     
     while True:
         user_input = input("\nYou: ").strip()
