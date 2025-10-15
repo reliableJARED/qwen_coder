@@ -11,7 +11,8 @@ from qwen_code import SimpleQwen  # Assuming qwen_code.py is in the same directo
 
 
 # try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS to help with mem availibility.
-os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for React development
@@ -125,10 +126,13 @@ def create_session():
 @app.route('/api/sessions/<session_id>', methods=['GET'])
 def get_session(session_id):
     """Load a specific chat session."""
+    global coder
     session_data = SessionManager.load_session(session_id)
     
     if not session_data:
         return jsonify({"error": "Session not found"}), 404
+    else:
+        coder.messages = session_data["messages"]
     
     return jsonify(session_data)
 
@@ -171,25 +175,41 @@ def send_message(session_id):
     if not session_data:
         return jsonify({"error": "Session not found"}), 404
     
+    # Calculate token count
+    input_token_count = coder.token_count(user_message)
+
     # Add user message
-    session_data["messages"].append({"role": "user", "content": user_message})
+    session_data["messages"].append({"role": "user", "content": user_message, "token_count": input_token_count})
 
     # Get AI response
     response = coder.chat(user_message, file_contents=session_data["files"])
     assistant_response = f"{response}"
-    session_data["messages"].append({"role": "assistant", "content": assistant_response})
+    
+    # Calculate token count
+    output_token_count = coder.token_count(assistant_response)
+
+    session_data["messages"].append({"role": "assistant", "content": assistant_response, "token_count": output_token_count})
     
     SessionManager.save_session(session_id, session_data)
-    
+
+    #calculate total tokens
+    total_tokens = 0
+    for msg in session_data["messages"]:
+        if "token_count" in msg:
+            total_tokens += msg["token_count"]
+    print(f"Total tokens in session {session_id}: {total_tokens}")
+
     return jsonify({
         "message": session_data["messages"][-1],
-        "all_messages": session_data["messages"]
+        "all_messages": session_data["messages"],
+        "total_tokens": str(total_tokens)
     })
 
 
 @app.route('/api/sessions/<session_id>/messages/<int:message_index>', methods=['PUT'])
 def update_message(session_id, message_index):
     """Update a specific message."""
+    global coder
     data = request.json
     new_content = data.get('content', '')
     
@@ -202,6 +222,8 @@ def update_message(session_id, message_index):
     
     session_data["messages"][message_index]["content"] = new_content
     SessionManager.save_session(session_id, session_data)
+
+    coder.messages = session_data["messages"]
     
     return jsonify({"success": True})
 

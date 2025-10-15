@@ -24,7 +24,7 @@
     <link href="./lib/prism-tomorrow.min.css" rel="stylesheet" />
     <!-- Prism Core JS -->
     <script src="./lib/prism.min.js"></script>
-    <!-- Include specific languages you need (e.g., python, javascript) -->
+    <!-- Include specific languages (e.g., python, javascript) -->
     <script src="./lib/prism-python.min.js"></script>
     <script src="./lib/prism-javascript.min.js"></script>
 
@@ -83,6 +83,23 @@
             height: 100vh;
         }
         
+        .tokens-display {
+            /* Positioning and layout */
+            padding: 12px 20px; /* Padding for visual space */
+            text-align: right; /* Align text to the right side of the main content area */
+            font-size: 0.9em; /* Slightly smaller font size */
+            color: #333; /* Make the main text slightly darker */
+
+            font-weight: 500;
+
+        }
+
+        .tokens-display strong {
+            
+            color: #666; /* Subtle grey color */
+            font-weight: 600;
+        }
+
 
         /* Left Sidebar - Conversations */
         .sidebar {
@@ -295,7 +312,8 @@
         }
 
         .message-btn {
-            padding: 4px 12px;
+            padding: 0px 12px;
+            height: 30px; /* Explicitly set height */
             background: #2d2d30;
             color: #cccccc;
             border: 1px solid #3e3e42;
@@ -551,6 +569,7 @@
             const [sessions, setSessions] = useState([]);
             const [currentSessionId, setCurrentSessionId] = useState(null);
             const [messages, setMessages] = useState([]);
+            const [total_tokens, setTokenCount] = useState('');
             const [files, setFiles] = useState([]);
             const [systemPrompt, setSystemPrompt] = useState('You are a helpful coding assistant.');
             const [systemPromptExpanded, setSystemPromptExpanded] = useState(false);
@@ -648,6 +667,7 @@
                     });
                     const data = await response.json();
                     setMessages(data.all_messages);
+                    setTokenCount(data.total_tokens);
                     setInputMessage('');
                     await loadSessions(); // Update session preview
                 } catch (error) {
@@ -777,6 +797,7 @@
                             onSaveEdit={saveEditedMessage}
                             onCancelEdit={() => setEditingMessageIndex(null)}
                             onDelete={deleteMessage}
+                            total_tokens={total_tokens}
                         />
 
                         <InputArea
@@ -857,7 +878,7 @@
         /**
          * Messages Area Component - Displays chat messages with edit/delete functionality
          */
-        function MessagesArea({ messages, editingMessageIndex, editingContent, setEditingContent, onStartEditing, onSaveEdit, onCancelEdit, onDelete }) {
+        function MessagesArea({ messages, editingMessageIndex, editingContent, setEditingContent, onStartEditing, onSaveEdit, onCancelEdit, onDelete, total_tokens }) {
             const messagesEndRef = useRef(null);
 
             // Auto-scroll to bottom when new messages arrive
@@ -920,14 +941,24 @@
                                                 >
                                                     Delete
                                                 </button>
+                                                <span   className="tokens-display">Tokens: {message.token_count}</span>
                                             </>
                                         )}
                                     </div>
+                                    
                                 </div>
                             </div>
                         );
                     })}
                     <div ref={messagesEndRef} />
+
+                    {/* Display total tokens using the CSS class */}
+                        {total_tokens && (
+                            <div className="tokens-display">
+                                <strong>Total Tokens: {total_tokens}</strong>
+                            </div>
+                        )}
+
                 </div>
             );
         }
@@ -951,7 +982,7 @@
                             value={inputMessage}
                             onChange={(e) => setInputMessage(e.target.value)}
                             onKeyPress={handleKeyPress}
-                            placeholder={disabled ? "Create or select a conversation to start... ELSE YOU CAN NOT CLICK HERE" : "Type your message... (Shift+Enter for new line)"}
+                            placeholder={disabled ? "click +New Conversation or select a previous conversation on left" : "Type your message... (Shift+Enter for new line)"}
                             disabled={disabled}
                         />
                         <button 

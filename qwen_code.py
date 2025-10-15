@@ -10,7 +10,9 @@ from typing import List, Dict, Any, Callable
 
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
-os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+
 
 def install_dependencies():
     """Install required packages if not available.
@@ -87,7 +89,7 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
         model = AutoModelForCausalLM.from_pretrained(
             local_path,
             torch_dtype="auto",
-            device_map="auto",
+            device_map="auto", # This instructs PyTorch to use all available GPUs
             local_files_only=True
         )
         tokenizer = AutoTokenizer.from_pretrained(
@@ -203,7 +205,8 @@ class SimpleQwen:
         
         return tool_results
     
-    def _run_generation_and_cleanup(self, text: str, max_new_tokens: int = 8000):
+    
+    def _run_generation_and_cleanup(self, text: str, max_new_tokens: int = 4500):
         """Helper function to run generation, decode, and aggressively clean memory."""
         
         # Clear unused cached memory *before* allocating inputs and running inference
@@ -246,10 +249,19 @@ class SimpleQwen:
         
         return response_text
     
+    def token_count(self, text: str) -> int:
+        """Count tokens in text."""
+        tokens = self.tokenizer.encode(text)
+        return len(tokens)
+    
     def chat(self, user_input: str, file_contents: list = None) -> str:
         """Generate response with tool support."""
         # Add user message
         self.messages.append({"role": "user", "content": user_input})
+
+        # tokens and count
+        input_token_count = self.token_count(user_input)
+        print(f"Total Token count for Qwen: {input_token_count}")
 
         # Copy messages to avoid modifying original during processing, file contents are dynamically added
         #user could add or delete files between calls so we don't want to cache them in self.messages since we can't track the index easily
@@ -273,7 +285,11 @@ class SimpleQwen:
             add_generation_prompt=True
         )
         
-        # 1. First Generation Attempt
+        # token count
+        all_token_count = self.token_count(text)
+        print(f"Total Token count for Qwen: {all_token_count}")
+
+        #First Generation Attempt
         response_text = self._run_generation_and_cleanup(text)
         
         # Parse response for tool calls
