@@ -6,8 +6,8 @@ import uuid
 import shutil
 from pathlib import Path
 from typing import Dict, List, Any
-import json
-from qwen_code import SimpleQwen  # Assuming qwen_code.py is in the same directory
+
+from qwen_code import SimpleQwen  
 
 
 # try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS to help with mem availibility.
@@ -25,8 +25,12 @@ SESSIONS_DIR.mkdir(exist_ok=True)
 active_sessions: Dict[str, Any] = {}
 
 # Initialize chat
-coder = SimpleQwen(force_offline=True) 
-
+coder = None
+# Inject the initialized coder into the global namespace for routes to use
+def initialize_coder():
+    global coder
+    # Initialize chat - This now only runs in the main process!
+    coder = SimpleQwen(force_offline=True) 
 
 class SessionManager:
     """Manages chat sessions including messages and uploaded files."""
@@ -338,8 +342,9 @@ def serve_lib_files(filename):
 
 if __name__ == '__main__':
     import socket
+    initialize_coder() # Ensure coder is initialized in the main process
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     port = 5000
     print(f"Flask server is running at http://{local_ip}:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)  # use_reloader=False to prevent double initialization
