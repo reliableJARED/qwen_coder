@@ -82,7 +82,7 @@ Done!
 
 ## Initial Run - Trigger Download of Qwen 2.5 Code Instruct
 
-You can now run the server
+Trigger download of the Qwen 2.5 Code Instruct model by running the base script for it
 
 ```bash
 python qwen_code.py
