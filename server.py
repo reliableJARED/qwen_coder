@@ -337,4 +337,8 @@ def serve_lib_files(filename):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    import socket
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    print(f"Flask server is running at http://{local_ip}:8080")
+    app.run(debug=True, host='0.0.0.0', port=8080)
