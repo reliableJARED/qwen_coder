@@ -106,6 +106,9 @@ File Context - Right column add/subtract files
 Update the System Promp
 ![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot3.png)
 
+Markup Syntax Highlighting
+![Screenshot](https://github.com/reliableJARED/qwen_coder/blob/main/screenshots/screenshot4.png)
+
 ## Troubleshooting
 
 ### Python Command Not Found (Windows)
