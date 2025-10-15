@@ -79,7 +79,7 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
         print(f"Loading model from: {local_path}")
         model = AutoModelForCausalLM.from_pretrained(
             local_path,
-            torch_dtype="auto",
+            dtype="auto",
             device_map="auto", # This instructs PyTorch to use all available GPUs
             local_files_only=True
         )
@@ -91,7 +91,7 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
         print(f"Loading {model_name} (will download if needed)...")
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype="auto",
+            dtype="auto",
             device_map="auto"
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -127,6 +127,12 @@ class SimpleQwen:
         self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant."}]
         self.tools = {}
         self.available_tools = []
+
+        # Get the data type of the first parameter in the model
+        first_param_dtype = next(self.model.parameters()).dtype
+
+        # Print the result
+        print(f"The model's data type is: {first_param_dtype}")
 
         # Ensure model is in evaluation mode
         self.model.eval()
