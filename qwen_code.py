@@ -7,8 +7,8 @@ import socket
 import time
 import gc
 from typing import List, Dict, Any, Callable
-import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
@@ -95,13 +95,36 @@ def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False)
             device_map="auto"
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    return model, tokenizer, torch
 
+    return model, tokenizer
+
+def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
+    """Download model for offline use."""
+    import multiprocessing
+    print(f"Ensuring model {model_name} is downloaded...")
+    #do this to put in a separate process to avoid memory bloat in the main process
+    #will use more total memory but avoid fragmentation in the main process
+    #auto deletes when process ends
+    download_process = multiprocessing.Process(target=download_thread, args=(model_name,))
+    download_process.start()
+    
+    # Wait for the process to complete
+    download_process.join()
+    return True
+
+def download_thread(model_name):
+    """Thread target for downloading model."""
+    #auto downloads the model if we don't have it.
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    return  # just download and cache in huggingface cache
+  
 class SimpleQwen:
     def __init__(self, model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False):
-        self.model, self.tokenizer, self.torch = load_model(model_name, force_offline)
-        self.messages = [{"role": "system", "content": "You are a helpful assistant."}]
+        self.model, self.tokenizer = load_model(model_name, force_offline)
+        self.torch = torch#__import__("torch")  # Lazy import to avoid unnecessary memory usage if not needed
+        self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant."}]
         self.tools = {}
         self.available_tools = []
 
@@ -196,20 +219,16 @@ class SimpleQwen:
         
         return tool_results
     
-    
     def _run_generation_and_cleanup(self, text: str, max_new_tokens: int = 4500):
         """Helper function to run generation, decode, and aggressively clean memory."""
         
-        # Clear unused cached memory *before* allocating inputs and running inference
-        if self.torch.cuda.is_available():
-            self.torch.cuda.empty_cache()
-            gc.collect()
-            # No need for time.sleep(1) if we are immediately proceeding with the load/run
-
         # Use torch.no_grad() for inference to save memory used by backprop structures
         with self.torch.no_grad():
             model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
             input_ids_len = model_inputs.input_ids.shape[1]
+
+            # START timing the generation
+            start_time = time.time()
 
             generated_ids = self.model.generate(
                 **model_inputs,
@@ -218,6 +237,7 @@ class SimpleQwen:
                 temperature=0.7,
                 top_p=0.8
             )
+            generation_time = time.time() - start_time
 
         # Explicitly delete input tensors before cleanup
         del model_inputs
@@ -226,6 +246,9 @@ class SimpleQwen:
         output_tokens = [
             output_ids[input_ids_len:] for output_ids in generated_ids
         ]
+        output_tokens_count = len(output_tokens[0])
+        tps = output_tokens_count / generation_time
+        print(f"[Timing Check] Generated {output_tokens_count} tokens in {generation_time:.3f}s. Observed GPU TPS: {tps:.2f}")
         
         response_text = self.tokenizer.batch_decode(output_tokens, skip_special_tokens=True)[0]
         
@@ -234,9 +257,7 @@ class SimpleQwen:
         del output_tokens
         
         # Aggressive memory cleanup *after* inference and tensor deletion
-        if self.torch.cuda.is_available():
-            self.torch.cuda.empty_cache()
-            gc.collect()
+        gc.collect()
         
         return response_text
     
@@ -249,10 +270,6 @@ class SimpleQwen:
         """Generate response with tool support."""
         # Add user message
         self.messages.append({"role": "user", "content": user_input})
-
-        # tokens and count
-        input_token_count = self.token_count(user_input)
-        print(f"Total Token count for Qwen: {input_token_count}")
 
         # Copy messages to avoid modifying original during processing, file contents are dynamically added
         #user could add or delete files between calls so we don't want to cache them in self.messages since we can't track the index easily
@@ -276,10 +293,6 @@ class SimpleQwen:
             add_generation_prompt=True
         )
         
-        # token count
-        all_token_count = self.token_count(text)
-        print(f"Total Token count for Qwen: {all_token_count}")
-
         #First Generation Attempt
         response_text = self._run_generation_and_cleanup(text)
         
@@ -290,6 +303,7 @@ class SimpleQwen:
         # Execute tools if present
         if tool_calls := parsed_response.get("tool_calls"):
             tool_results = self._execute_tool_calls(tool_calls)
+
             self.messages.extend(tool_results)
             
             # Generate final response after tool execution
@@ -300,7 +314,7 @@ class SimpleQwen:
                 add_generation_prompt=True
             )
             
-            # 2. Second Generation Attempt (Crucial cleanup applied)
+            # 2. Second Generation Attempt ( cleanup applied)
             final_response = self._run_generation_and_cleanup(text)
 
             final_parsed = self._parse_tool_calls(final_response)
@@ -309,38 +323,7 @@ class SimpleQwen:
             return final_parsed["content"]
         
         return parsed_response["content"]
-
-def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
-    """Download model for offline use."""
-    import multiprocessing
-    
-    #Not really needed to specify a save path since we are just caching in huggingface cache
-    #but if you want to save to a specific path, uncomment in the download_thread function
-    save_path = f"./{model_name.split('/')[-1]}"
-    
-    #do this to put in a separate process to avoid memory bloat in the main process
-    #will use more total memory but avoid fragmentation in the main process
-    #auto deletes when process ends
-    download_process = multiprocessing.Process(target=download_thread, args=(model_name,save_path))
-    download_process.start()
-    
-    # Wait for the process to complete
-    download_process.join()
-    return True
-
-def download_thread(model_name,save_path):
-    """Thread target for downloading model."""
-    #auto downloads the model if we don't have it.
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    #don't use this unless you need a save path isn't the huggingface hub default directory
-    #model.save_pretrained(save_path)
-    #tokenizer.save_pretrained(save_path)
-    #print(f"Model downloaded to: {save_path}")
-    #return save_path
-    return  # just download and cache in huggingface cache
-    
+  
 # Example usage
 if __name__ == "__main__":
     import time
