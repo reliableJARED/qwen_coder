@@ -115,7 +115,7 @@ def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
 def download_thread(model_name):
     """Thread target for downloading model."""
     #auto downloads the model if we don't have it.
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto")
+    model = AutoModelForCausalLM.from_pretrained(model_name, dtype="auto")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     return  # just download and cache in huggingface cache
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     import time
     
     # Limit to specific GPU because this is a 7B model and fits on one 16GB GPU. Adjust as needed.
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
     # Initialize chat, Load model (will download if not present)
     chat = SimpleQwen(model_name="Qwen/Qwen2.5-Coder-7B-Instruct",force_offline=True)
