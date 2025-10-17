@@ -6,7 +6,7 @@ import uuid
 import shutil
 from pathlib import Path
 from typing import Dict, List, Any
-
+from datetime import datetime
 from qwen_code import SimpleQwen  
 
 
@@ -38,7 +38,7 @@ class SessionManager:
     @staticmethod
     def create_session() -> str:
         """Create a new chat session with unique ID."""
-        session_id = str(uuid.uuid4())
+        session_id = str(datetime.now().timestamp())#str(uuid.uuid4())
         session_path = SESSIONS_DIR / session_id
         session_path.mkdir(exist_ok=True)
         

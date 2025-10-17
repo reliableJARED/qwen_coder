@@ -1,3 +1,4 @@
+# search.py
 from ddgs import DDGS
 from bs4 import BeautifulSoup
 from bs4.element import Comment
@@ -6,8 +7,10 @@ import urllib.error
 import random
 
 from bart_lg import Summarizer
+
+
 # Define your search query
-query = "October 16 2025. what happened to the last starship launch"
+query = "how do you cook a hardboiled egg in a pressure cooker"
 dd = DDGS()
 
 # Perform the search
@@ -80,10 +83,11 @@ for result in results:
     
     # Print the extracted text
     print(website_text)
-    all_summaries.append(summarizer.summarize_text(website_text))
+    all_summaries.append(summarizer.summarize_text(website_text,query_match=query))
 
 print("\n\nALL SUMMARIES:\n\n")
-print(all_summaries)
+print(all_summaries,"\n\n",len(all_summaries))
+
 x = summarizer.summarize_text("".join(all_summaries))
-print("\n\nFINAL SUMMARY:\n\n")
+print("\n\nSUMMARY OF ALL SUMMARIES:\n\n")
 print(x)

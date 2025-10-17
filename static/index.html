@@ -833,28 +833,32 @@
          * Sidebar Component - Displays conversation list
          */
         function Sidebar({ sessions, currentSessionId, onNewChat, onSelectSession }) {
-            return (
-                <div className="sidebar">
-                    <div className="sidebar-header">
-                        <button className="new-chat-btn" onClick={onNewChat}>
-                            + New Conversation
-                        </button>
+                //session.id is a timestamp, so sorting by id descending gives newest first
+                // Sort sessions by id in descending order (newest to oldest)
+                const sortedSessions = [...sessions].sort((a, b) => b.id - a.id);
+
+                return (
+                    <div className="sidebar">
+                        <div className="sidebar-header">
+                            <button className="new-chat-btn" onClick={onNewChat}>
+                                + New Conversation
+                            </button>
+                        </div>
+                        <div className="conversations-list">
+                            {sortedSessions.map(session => (
+                                <div
+                                    key={session.id}
+                                    className={`conversation-item ${session.id === currentSessionId ? 'active' : ''}`}
+                                    onClick={() => onSelectSession(session.id)}
+                                >
+                                    <div className="conversation-preview">{session.preview}</div>
+                                    <div className="conversation-meta">{session.message_count} messages</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    <div className="conversations-list">
-                        {sessions.map(session => (
-                            <div
-                                key={session.id}
-                                className={`conversation-item ${session.id === currentSessionId ? 'active' : ''}`}
-                                onClick={() => onSelectSession(session.id)}
-                            >
-                                <div className="conversation-preview">{session.preview}</div>
-                                <div className="conversation-meta">{session.message_count} messages</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
+                );
+            }
 
         /**
          * System Prompt Section Component - Collapsible editor for system prompt
