@@ -4,8 +4,10 @@ from bs4.element import Comment
 import urllib.request
 import urllib.error
 import random
+
+from bart_lg import Summarizer
 # Define your search query
-query = "today's gaza israel news"
+query = "October 16 2025. what happened to the last starship launch"
 dd = DDGS()
 
 # Perform the search
@@ -19,28 +21,24 @@ for result in results:
 
 def open_url(url):
     user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
-        "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36",
-        "Mozilla/5.0 (Android 10; Mobile; rv:91.0) Gecko/91.0 Firefox/91.0",
-        "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 OPR/77.0.4054.141",
-        "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 14_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (iPad; CPU OS 14_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/87.0.4280.141 Mobile Safari/537.36 UCBrowser/12.13.1.1007",
-        "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/87.0.4280.141 Mobile Safari/537.36 SamsungBrowser/14.0",
-        "Mozilla/5.0 (Kindle Fire; Linux; en_US) AppleWebKit/537.36 (KHTML, like Gecko) Silk/4.6 Safari/537.36",
-        "Opera Mini/60.0.3200.585 Version/12.0.2254.115 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 10; SM-G975F Build/QP1A.190711.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/87.0.4280.141 Mobile Safari/537.36 Baiduspider/2.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)"
-    ]
+        #Chrome on Windows:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        #Chrome on macOS:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        #Chrome on Linux:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"]
     headers = {
         'User-Agent': random.choice(user_agents)
     }
     try:
         page = urllib.request.Request(url, headers=headers)
-        html = urllib.request.urlopen(page).read()
+        response = urllib.request.urlopen(page)
+        html = response.read()
         return html
     except urllib.error.HTTPError as e:
         print(f"HTTP Error {e.code} while fetching {url}. Reason: {e.reason}")
@@ -54,6 +52,8 @@ def tag_visible(element):
         return False
     if isinstance(element, Comment):
         return False
+    if element.name == 'br':
+        return True  # Include <br> tags for line breaks
     return True
 
 def text_from_html(html_content):
@@ -63,6 +63,8 @@ def text_from_html(html_content):
     website_text = " ".join(t.strip() for t in visible_texts)
     return website_text
 
+summarizer = Summarizer()
+all_summaries = []
 # Process each result
 for result in results:
     url = result['href']
@@ -78,3 +80,10 @@ for result in results:
     
     # Print the extracted text
     print(website_text)
+    all_summaries.append(summarizer.summarize_text(website_text))
+
+print("\n\nALL SUMMARIES:\n\n")
+print(all_summaries)
+x = summarizer.summarize_text("".join(all_summaries))
+print("\n\nFINAL SUMMARY:\n\n")
+print(x)

@@ -2,6 +2,7 @@
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import socket
+import re
 
 MAX_CHUNK_TOKENS = 650
 MAX_RESPONSE_TOKENS = 500
@@ -31,9 +32,40 @@ class Summarizer:
             return True
 
 
+    def clean_text_for_bart_cnn(self,text):
+        """
+        Cleans text, keeping only English alphanumeric characters, standard 
+        punctuation, parentheses, and hyphens.
+
+        Args:
+            text (str): The input text containing various scripts/symbols.
+
+        Returns:
+            str: The strictly cleaned text.
+        """
+        
+        # Define the allowed set of characters:
+        # a-zA-Z0-9 : English alphanumeric
+        # \s        : Whitespace (space, tab, newline)
+        # .,?!:;'"  : Standard punctuation
+        # ()        : Parentheses
+        # \-        : Literal hyphen (must be escaped or placed at the start/end)
+        # &%$/@     : Adding a few common ASCII symbols often safely included (optional, but practical)
+        
+        allowed_pattern = r'[^a-zA-Z0-9\s.,?!:;\'"()\[\]\-\&]' 
+
+        cleaned_text = re.sub(allowed_pattern, ' ', text)
+        # Replace multiple spaces/newlines with a single space
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        
+        return cleaned_text
+
+
     def generate_summary(self, chunk):
+        #clean chunk
+        clean_chunk = self.clean_text_for_bart_cnn(chunk)
         #Feed the raw text chunk to the model, no extra prompt needed for BART
-        inputs = self.tokenizer(chunk, return_tensors="pt")
+        inputs = self.tokenizer(clean_chunk, return_tensors="pt")
         # Move inputs to the same device as the model
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         
@@ -78,13 +110,13 @@ class Summarizer:
         for i, chunk in enumerate(chunks):
             #print(f"Generating summary for chunk {i+1}/{len(chunks)}")
             summary = self.generate_summary(chunk)
+            print(f"\n\nChunk {i+1} summary: {summary}\n\n")
             summaries.append(summary)
 
         # Combine summaries into a single response
         final_response = ' '.join(summaries)
 
         # return the final response
-        print(final_response)
         return final_response
 
 # Example usage:
