@@ -4,6 +4,8 @@ import torch
 import socket
 import re
 from mxbai_txt_embed import MxBaiEmbedder
+import logging
+logging.basicConfig(level=logging.INFO)
 
 MAX_CHUNK_TOKENS = 950
 MAX_RESPONSE_TOKENS = 500
@@ -118,28 +120,28 @@ class Summarizer:
     def summarize_text(self, text,query_match=False,similarity_threshold=0.75):
         # Split the text into chunks
         chunks = self.split_into_token_chunks(text)
-        print(f"Total chunks created: {len(chunks)}")
+        logging.debug(f"Total chunks created: {len(chunks)}")
 
         # Initialize an empty list to store summaries
         summaries = []
 
         # Generate summaries for each chunk
         for i, chunk in enumerate(chunks):
-            #print(f"Generating summary for chunk {i+1}/{len(chunks)}")
+            logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
             summary = self.generate_summary(chunk)
-            print(f"\n\nChunk {i+1} summary: {summary}\n\n")
+            logging.debug(f"\n\nChunk {i+1} summary: {summary}\n\n")
             if query_match:
                 # Check semantic similarity with the query using embeddings
                 similarity = self.embedder.compare_strings(summary, query_match)
                 if similarity >similarity_threshold:  # Threshold for relevance
-                    print(f"Chunk {i+1} is relevant (similarity: {similarity:.2f})")
+                    logging.debug(f"Chunk {i+1} is relevant (similarity: {similarity:.2f})")
                     summaries.append(summary)
             else:
                 summaries.append(summary)
 
         # Combine summaries into a single response
         final_response = ' '.join(summaries)
-
+        logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
         # return the final response
         return final_response
 

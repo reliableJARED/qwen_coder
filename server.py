@@ -7,8 +7,13 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime
-from qwen_code import SimpleQwen  
-
+from qwen_code import SimpleQwen
+import logging
+import json
+# Ngrok import is used for setting up the secure tunnel for remote access. Don't need if only local access.
+import ngrok
+from dotenv import load_dotenv
+load_dotenv()
 
 # try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS to help with mem availibility.
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
@@ -21,11 +26,15 @@ CORS(app)  # Enable CORS for React development
 SESSIONS_DIR = Path("chat_sessions")
 SESSIONS_DIR.mkdir(exist_ok=True)
 
+# Static API token for authenticated requests
+API_TOKEN = os.getenv("QWEN_CODER_API_KEY") 
+
 # In-memory store for active sessions (can be replaced with Redis or some other DB for persistence)
 active_sessions: Dict[str, Any] = {}
 
 # Initialize chat
 coder = None
+
 # Inject the initialized coder into the global namespace for routes to use
 def initialize_coder():
     global coder
@@ -42,6 +51,9 @@ class SessionManager:
         session_path = SESSIONS_DIR / session_id
         session_path.mkdir(exist_ok=True)
         
+        print(f"Created new session: {session_id}")
+        print(f"Session path: {session_path.resolve()}")
+        print(f"Sessions directory contents: {list(SESSIONS_DIR.iterdir())}")
         # Initialize session data
         session_data = {
             "messages": [{"role": "system", "content": "You are a helpful coding assistant."}],
@@ -112,7 +124,8 @@ class SessionManager:
 
 
 # API Routes
-
+# Note: Authentication is handled by ngrok's traffic policy
+# No need for Flask-level token checking since ngrok validates the Bearer token
 @app.route('/api/sessions', methods=['GET'])
 def get_sessions():
     """Get list of all chat sessions."""
@@ -316,10 +329,18 @@ def delete_file(session_id, filename):
     return jsonify({"success": True})
 
 
-@app.route('/')
+@app.route('/qc')
 def serve_index():
-    """Serve the React app."""
-    return send_from_directory('static', 'index.html')
+    """
+    Serve the React app and set the API token as a cookie.
+    After ngrok OAuth succeeds, this route sets a cookie with the API_TOKEN
+    so the frontend can use it for authenticated API requests.
+    """
+    print(request.cookies)
+    print(request.headers)
+    response = send_from_directory('static', 'index.html')
+    response.set_cookie('qcode_api_token', API_TOKEN, httponly=False, samesite='Strict')
+    return response
 
 
 @app.route('/<path:path>')
@@ -339,12 +360,106 @@ def serve_lib_files(filename):
     except FileNotFoundError:
         return "Resource not found.", 404
 
+def setup_ngrok():
+    """Setup ngrok tunnel with OAuth protection."""
+    
+    # Get authorized emails from environment, only those emails can access the endpoint post google auth
+    allowed_emails_str = os.getenv("AUTHORIZED_EMAILS", "[]")
+    allowed_emails = json.loads(allowed_emails_str)
+    allowed_emails_expr = ",".join([f"'{email}'" for email in allowed_emails])
+    print(API_TOKEN)
+    # Create traffic policy for OAuth protection
+    # Create traffic policy that:
+    # 1. Allows /api/* requests with valid Bearer token
+    # 2. Allows /qc (root) requests after OAuth email validation
+    # 3. All other requests require appropriate auth
+
+    traffic_policy = {
+        "on_http_request": [
+            {
+                "name": "API routes require Bearer token",
+                "expressions": [
+                    "req.url.path.startsWith('/api/')",
+                    f"!('Bearer {API_TOKEN}' in req.headers['qcode_api_token'])"
+                ],
+                "actions": [
+                    {
+                        "type": "custom-response",
+                        "config": {
+                            "status_code": 401,
+                            "content": "text/plain",
+                            "body": "Unauthorized. Valid Bearer token required for API access."
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Root and page requests require OAuth",
+                "expressions": [
+                    "!req.url.path.startsWith('/qc/')"
+                ],
+                "actions": [
+                    {
+                        "type": "oauth",
+                        "config": {
+                            "provider": "google"
+                        }
+                    }
+                ]
+            },
+            {
+            "name": "Check authorized emails for web routes",
+            "expressions": [
+                "(req.url.path == '/qc' || req.url.path == '/home' || req.url.path == '/login' || req.url.path.startsWith('/static/'))",
+                f"!(actions.ngrok.oauth.identity.email in [{allowed_emails_expr}])"
+            ],
+            "actions": [
+                {
+                    "type": "custom-response",
+                    "config": {
+                        "status_code": 401,
+                        "content": "text/plain",
+                        "body": "Unauthorized access. Your email is not allowed to access this resource."
+                    }
+                }
+            ]
+        }
+        ]
+    }
+    
+    # Create ngrok listener
+    listener = ngrok.forward(
+        5000,  # Flask port
+        authtoken=os.getenv("NGROK_AUTHTOKEN"),
+        domain=os.getenv("NGROK_DOMAIN"),
+        traffic_policy=json.dumps(traffic_policy)
+    )
+    
+    print(f"\n{'='*60}")
+    print(f"ngrok tunnel established!")
+    print(f"Public URL: {listener.url()}")
+    print(f"{'='*60}\n")
+    
+    return listener
 
 if __name__ == '__main__':
     import socket
-    initialize_coder() # Ensure coder is initialized in the main process
+    
+    # Initialize coder in main process
+    initialize_coder()
+    
+    # Get local network info
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     port = 5000
-    print(f"Flask server is running at http://{local_ip}:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)  # use_reloader=False to prevent double initialization
+    
+    print(f"Flask server starting on http://{local_ip}:{port}")
+    
+    # Setup ngrok tunnel (optional - can be disabled by commenting out)
+    if os.getenv("NGROK_AUTHTOKEN"):
+        setup_ngrok()
+    else:
+        print("No NGROK_AUTHTOKEN found - running without ngrok tunnel")
+    
+    # Run Flask app
+    app.run(debug=True, host='0.0.0.0', port=port, use_reloader=False)

@@ -4,29 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SimpleQwen Coding Assistant</title>
-    <!-- ONLINE SOURCES
+    <!-- LOCAL SOURCES -->
+
+
+    <!-- ONLINE SOURCES-->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
-    script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-    -->
-    <script crossorigin src="./lib/react.production.min.js"></script>
-    <script crossorigin src="./lib/react-dom.production.min.js"></script>
-    <script src="./lib/babel.min.js"></script>
-    <!-- MARKDOWN PARSER (Marked.js) -->
-    <script src="./lib/marked.min.js"></script>
-    <!-- PRISM.JS ASSETS FOR SYNTAX HIGHLIGHTING -->
-    <!-- Prism CSS Theme (Tomorrow is a good dark theme) -->
-    <link href="./lib/prism-tomorrow.min.css" rel="stylesheet" />
-    <!-- Prism Core JS -->
-    <script src="./lib/prism.min.js"></script>
-    <!-- Include specific languages (e.g., python, javascript) -->
-    <script src="./lib/prism-python.min.js"></script>
-    <script src="./lib/prism-javascript.min.js"></script>
+    
+    
 
     <style>
         * {
@@ -60,7 +51,7 @@
         }
         
         /* Specific Styles for Sub Elememts */
-        .message-content ul, .message-content ol,.message-content p, .message-content div, .message-content li{
+        .message-content ul, .message-content ol, .message-content div, .message-content li{
             padding-left: 10px;
             padding-top: 1px;
             line-height: 1;
@@ -269,7 +260,7 @@
         }
 
         .message {
-            margin-bottom: 20px;
+            margin-bottom: 5px;
             display: flex;
             gap: 12px;
         }
@@ -290,11 +281,11 @@
             background: #252526;
             padding: 12px;
             border-radius: 6px;
-            border: 1px solid #3e3e42;
+            border: 2px solid #3e3e42;
             white-space: pre-wrap;
             word-wrap: break-word;
             font-size: 14px;
-            line-height: 1.6;
+            line-height: 3;
         }
 
         .message-content.editing {
@@ -515,6 +506,182 @@
         input[type="file"] {
             display: none;
         }
+        /* Media Queries for Mobile Optimization */
+        @media (max-width: 768px) {
+            body {
+                overflow: auto;
+            }
+
+            .app-container {
+                flex-direction: column;
+                height: auto;
+                min-height: 100vh;
+            }
+
+            /* Left Sidebar - Horizontal scroll at top (10% height) */
+            .sidebar {
+                width: 100%;
+                height: 10vh;
+                min-height: 60px;
+                border-right: none;
+                border-bottom: 1px solid #3e3e42;
+                flex-direction: row;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .sidebar-header {
+                border-bottom: none;
+                border-right: 1px solid #3e3e42;
+                padding: 8px 12px;
+                min-width: 120px;
+                display: flex;
+                align-items: center;
+            }
+
+            .new-chat-btn {
+                width: auto;
+                padding: 8px 16px;
+                font-size: 12px;
+                white-space: nowrap;
+            }
+
+            .conversations-list {
+                display: flex;
+                flex-direction: row;
+                padding: 8px;
+                gap: 8px;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .conversation-item {
+                min-width: 200px;
+                margin-bottom: 0;
+                flex-shrink: 0;
+            }
+
+            /* Right Sidebar - Horizontal scroll below left sidebar (10% height) */
+            .files-sidebar {
+                width: 100%;
+                height: 10vh;
+                min-height: 60px;
+                border-left: none;
+                border-bottom: 1px solid #3e3e42;
+                flex-direction: row;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .files-header {
+                border-bottom: none;
+                border-right: 1px solid #3e3e42;
+                padding: 8px 12px;
+                min-width: 120px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+
+            .files-title {
+                font-size: 12px;
+                margin-bottom: 4px;
+            }
+
+            .file-upload-area {
+                padding: 8px;
+                min-width: 100px;
+            }
+
+            .upload-icon {
+                font-size: 20px;
+                margin-bottom: 4px;
+            }
+
+            .upload-text, .supported-formats {
+                font-size: 10px;
+            }
+
+            .files-list {
+                display: flex;
+                flex-direction: row;
+                padding: 8px;
+                gap: 8px;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+
+            .file-item {
+                min-width: 180px;
+                margin-bottom: 0;
+                flex-shrink: 0;
+            }
+
+            /* Main Content - Takes remaining space (80% height) */
+            .main-content {
+                flex: 1;
+                height: 80vh;
+                min-height: 400px;
+            }
+
+            .system-prompt-section {
+                max-height: 30vh;
+            }
+
+            .messages-container {
+                padding: 12px;
+                flex: 1;
+            }
+
+            .message {
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .message-role {
+                min-width: auto;
+            }
+
+            .message-content {
+                font-size: 13px;
+                padding: 10px;
+                width: 100%;
+            }
+
+            .message-actions {
+                flex-wrap: wrap;
+            }
+
+            .message-btn {
+                font-size: 11px;
+                padding: 6px 10px;
+            }
+
+            .input-area {
+                padding: 12px;
+            }
+
+            .input-wrapper {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .message-input {
+                min-height: 60px;
+                font-size: 14px;
+            }
+
+            .send-btn {
+                width: 100%;
+                padding: 12px;
+                align-self: stretch;
+            }
+
+            .tokens-display {
+                padding: 8px 12px;
+                font-size: 0.8em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -523,7 +690,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // API Base URL - Update this if your server runs on a different port
+        // API Base URL - Update this if server runs on a different port
         const API_URL = 'http://localhost:5000/api';
 
         /**
@@ -587,6 +754,24 @@
             const [loading, setLoading] = useState(false);
             const [editingMessageIndex, setEditingMessageIndex] = useState(null);
             const [editingContent, setEditingContent] = useState('');
+            
+            /**
+             * getAuthHeaders - Helper function to include Bearer token in all API requests
+             * The token is set as a cookie by Flask after OAuth succeeds.
+             * @returns {Object} Headers object with Authorization token
+             */
+            const getAuthHeaders = () => {
+                // Read the api_token from cookies
+                const token = document.cookie
+                    .split('; ')
+                    .find(row => row.startsWith('qcode_api_token'))
+                    ?.split('=')[1];
+                
+                return {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                };
+            };
 
             // Load sessions on component mount
             useEffect(() => {
@@ -598,7 +783,9 @@
              */
             const loadSessions = async () => {
                 try {
-                    const response = await fetch(`${API_URL}/sessions`);
+                    const response = await fetch(`${API_URL}/sessions`, {
+                        headers: getAuthHeaders()
+                    })
                     const data = await response.json();
                     setSessions(data.sessions);
                 } catch (error) {
@@ -612,7 +799,8 @@
             const createNewSession = async () => {
                 try {
                     const response = await fetch(`${API_URL}/sessions`, {
-                        method: 'POST'
+                        method: 'POST',
+                        headers: getAuthHeaders()
                     });
                     const data = await response.json();
                     await loadSessions();
@@ -628,7 +816,9 @@
              */
             const loadSession = async (sessionId) => {
                 try {
-                    const response = await fetch(`${API_URL}/sessions/${sessionId}`);
+                    const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
+                        headers: getAuthHeaders()
+                    });
                     const data = await response.json();
                     setCurrentSessionId(sessionId);
                     setMessages(data.messages);
@@ -671,7 +861,7 @@
                 try {
                     const response = await fetch(`${API_URL}/sessions/${currentSessionId}/messages`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ content: inputMessage })
                     });
                     const data = await response.json();
@@ -706,7 +896,7 @@
                 try {
                     await fetch(`${API_URL}/sessions/${currentSessionId}/messages/${index}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({ content: editingContent })
                     });
                     const updatedMessages = [...messages];
@@ -727,7 +917,8 @@
 
                 try {
                     const response = await fetch(`${API_URL}/sessions/${currentSessionId}/messages/${index}`, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        headers: getAuthHeaders(),
                     });
                     const data = await response.json();
                     setMessages(data.messages);
@@ -746,9 +937,19 @@
                 const formData = new FormData();
                 formData.append('file', file);
 
+                // Read the api_token from cookies
+                const token = document.cookie
+                    .split('; ')
+                    .find(row => row.startsWith('qcode_api_token'))
+                    ?.split('=')[1];
+
                 try {
                     const response = await fetch(`${API_URL}/sessions/${currentSessionId}/files`, {
                         method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                            // Note: Don't set Content-Type for FormData - browser sets it automatically with boundary
+                        },
                         body: formData
                     });
                     const data = await response.json();
@@ -768,7 +969,8 @@
 
                 try {
                     await fetch(`${API_URL}/sessions/${currentSessionId}/files/${filename}`, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        headers: getAuthHeaders()
                     });
                     setFiles(files.filter(f => f.filename !== filename));
                 } catch (error) {

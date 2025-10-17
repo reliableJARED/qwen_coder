@@ -10,7 +10,7 @@ from bart_lg import Summarizer
 
 
 # Define your search query
-query = "how do you cook a hardboiled egg in a pressure cooker"
+query = "what do people think of Taylor Swift's new album?"
 dd = DDGS()
 
 # Perform the search

@@ -8,3 +8,7 @@ __pycache__/
 
 # Virtual environment
 qcode/
+
+#environment files
+.env
+.venv
