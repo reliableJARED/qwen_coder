@@ -11,6 +11,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
+"""max_split_size_mb:512: This parameter sets the maximum size (in megabytes) of a free memory block that the allocator will split 
+when a smaller allocation is requested. If a free block is larger than 512MB, and a smaller allocation is needed, 
+the allocator will split the block, using only the necessary portion and keeping the remainder available as a smaller free block. 
+This helps to prevent large contiguous blocks of memory from being entirely consumed by small allocations, 
+thus improving the chances of finding large contiguous blocks for future large allocations."""
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 

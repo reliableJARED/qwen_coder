@@ -500,7 +500,7 @@
         /* Media Queries for Mobile Optimization */
         @media (max-width: 768px) {
             body {
-                overflow: auto;
+                overflow: auto; /* Ensure the body scrolls if needed */
             }
 
             .app-container {
@@ -553,6 +553,12 @@
             }
 
             /* Right Sidebar - Horizontal scroll below left sidebar (10% height) */
+
+            /* Hide file and upload elements on mobile */
+            .file, .upload {
+                display: none;/* Hide file and upload elements on mobile */
+            }
+
             .files-sidebar {
                 width: 100%;
                 height: 10vh;
@@ -562,6 +568,7 @@
                 flex-direction: row;
                 overflow-x: auto;
                 overflow-y: hidden;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .files-header {
@@ -572,25 +579,30 @@
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .files-title {
                 font-size: 12px;
                 margin-bottom: 4px;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .file-upload-area {
                 padding: 8px;
                 min-width: 100px;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .upload-icon {
                 font-size: 20px;
                 margin-bottom: 4px;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .upload-text, .supported-formats {
                 font-size: 10px;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .files-list {
@@ -600,19 +612,22 @@
                 gap: 8px;
                 overflow-x: auto;
                 overflow-y: hidden;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
             .file-item {
                 min-width: 180px;
                 margin-bottom: 0;
                 flex-shrink: 0;
+                 display: none;/* Hide file and upload elements on mobile */
             }
 
-            /* Main Content - Takes remaining space (80% height) */
+            /* Main Content - Takes remaining space (90% height) */
             .main-content {
                 flex: 1;
-                height: 80vh;
+                height: 90vh;
                 min-height: 400px;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .system-prompt-section {
@@ -621,7 +636,7 @@
 
             .messages-container {
                 padding: 12px;
-                flex: 1;
+                flex: 1; /* Take up the remaining space */
             }
 
             .message {
@@ -795,7 +810,7 @@
                     });
                     const data = await response.json();
                     await loadSessions();
-                    loadSession(data.session_id);
+                    await loadSession(data.session_id);//let it load
                 } catch (error) {
                     console.error('Error creating session:', error);
                 }
@@ -1173,6 +1188,16 @@
          * Input Area Component - Text input and send button
          */
         function InputArea({ inputMessage, setInputMessage, onSend, loading, disabled }) {
+
+            const textareaRef = useRef(null);
+    
+            // Auto-focus text input area when enabled
+            useEffect(() => {
+                if (!disabled && textareaRef.current) {
+                    textareaRef.current.focus();
+                }
+            }, [disabled]);
+
             const handleKeyPress = (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -1184,6 +1209,7 @@
                 <div className="input-area">
                     <div className="input-wrapper">
                         <textarea
+                            ref={textareaRef}  //used as focus ref
                             className="message-input"
                             value={inputMessage}
                             onChange={(e) => setInputMessage(e.target.value)}

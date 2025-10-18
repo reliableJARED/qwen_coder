@@ -10,7 +10,7 @@ from bart_lg import Summarizer
 
 
 # Define your search query
-query = "what do people think of Taylor Swift's new album?"
+query = "what happened with the last starship launch?"
 dd = DDGS()
 
 # Perform the search
@@ -61,7 +61,7 @@ def tag_visible(element):
 
 def text_from_html(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
-    texts = soup.find_all(text=True)
+    texts = soup.find_all(string=True)
     visible_texts = filter(tag_visible, texts)
     website_text = " ".join(t.strip() for t in visible_texts)
     return website_text

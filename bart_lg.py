@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO)
 MAX_CHUNK_TOKENS = 950
 MAX_RESPONSE_TOKENS = 500
 OVERLAP_SIZE = 125  # Number of tokens to overlap between chunks
+MIN_SIMILARITY_REJECTION = 0.5 #when doing a similarity based return, below this is not even included in pool for ranking
 
 class Summarizer:
     #The bart-large-cnn model is a fine-tuned version of the BART (large-sized) model, 
@@ -117,33 +118,57 @@ class Summarizer:
                 
         return chunks
     
-    def summarize_text(self, text,query_match=False,similarity_threshold=0.75):
-        # Split the text into chunks
+    def summarize_text(self, text, query_match=False, top_k_ratio=0.75):
         chunks = self.split_into_token_chunks(text)
         logging.debug(f"Total chunks created: {len(chunks)}")
 
-        # Initialize an empty list to store summaries
-        summaries = []
-
-        # Generate summaries for each chunk
-        for i, chunk in enumerate(chunks):
-            logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
-            summary = self.generate_summary(chunk)
-            logging.debug(f"\n\nChunk {i+1} summary: {summary}\n\n")
-            if query_match:
-                # Check semantic similarity with the query using embeddings
+        if query_match:
+            # Collect ALL summaries with their similarity scores
+            summary_scores = []
+            
+            for i, chunk in enumerate(chunks):
+                logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
+                summary = self.generate_summary(chunk)
                 similarity = self.embedder.compare_strings(summary, query_match)
-                if similarity >similarity_threshold:  # Threshold for relevance
-                    logging.debug(f"Chunk {i+1} is relevant (similarity: {similarity:.2f})")
-                    summaries.append(summary)
+                
+                # Only include summaries with similarity above minimum threshold
+                if similarity > MIN_SIMILARITY_REJECTION:
+                    summary_scores.append((summary, similarity))
+                    logging.debug(f"Chunk {i+1} similarity: {similarity:.2f} - ACCEPTED")
+                else:
+                    logging.debug(f"Chunk {i+1} similarity: {similarity:.2f} - REJECTED (below 0.3)")
+            
+            if summary_scores:
+                # Sort by similarity (descending)
+                summary_scores.sort(key=lambda x: x[1], reverse=True)
+                
+                # Calculate how many to keep (top 1-top_k_ratio proportion)
+                num_to_keep = max(1, int(len(summary_scores) * (1 - top_k_ratio)))
+                
+                # Keep only the top N most relevant summaries
+                summaries = [summary for summary, score in summary_scores[:num_to_keep]]
+                
+                logging.info(f"Kept top {num_to_keep}/{len(summary_scores)} summaries")
+                logging.info(f"Similarity range: {summary_scores[0][1]:.2f} to {summary_scores[num_to_keep-1][1]:.2f}")
+
+                final_response = ' '.join(summaries)
+                logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
+                return final_response
             else:
+                #no similar content found
+                return ""
+
+        else:
+            # No query matching, keep all summaries
+            summaries = []
+            for i, chunk in enumerate(chunks):
+                logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
+                summary = self.generate_summary(chunk)
                 summaries.append(summary)
 
-        # Combine summaries into a single response
-        final_response = ' '.join(summaries)
-        logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
-        # return the final response
-        return final_response
+            final_response = ' '.join(summaries)
+            logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
+            return final_response
 
 # Example usage:
 if __name__ == "__main__":
