@@ -39,7 +39,7 @@ coder = None
 def initialize_coder():
     global coder
     # Initialize chat - This now only runs in the main process!
-    coder = SimpleQwen(force_offline=True) 
+    coder = SimpleQwen() 
 
 class SessionManager:
     """Manages chat sessions including messages and uploaded files."""

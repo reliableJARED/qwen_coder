@@ -21,115 +21,19 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
 
-def check_internet():
-    """Check if internet connection is available."""
-    try:
-        socket.create_connection(("huggingface.co", 443), timeout=5)
-        return True
-    except (socket.timeout, socket.error, OSError):
-        return False
 
-def find_local_model(model_name):
-    """Find cached model in common HuggingFace cache locations."""
-    # Check local directory first
-    local_name = model_name.split('/')[-1]
-    if os.path.exists(local_name) and validate_model_files(local_name):
-        return local_name
-    
-    # Check HuggingFace cache
-    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
-    model_dir_name = f"models--{model_name.replace('/', '--')}"
-    model_path = os.path.join(cache_dir, model_dir_name)
-    
-    if os.path.exists(model_path):
-        snapshots_dir = os.path.join(model_path, "snapshots")
-        if os.path.exists(snapshots_dir):
-            snapshots = os.listdir(snapshots_dir)
-            for snapshot in snapshots:
-                snapshot_path = os.path.join(snapshots_dir, snapshot)
-                if validate_model_files(snapshot_path):
-                    return snapshot_path
-    
-    return None
-
-def validate_model_files(model_path):
-    """Check if model directory has required files."""
-    if not os.path.exists(model_path):
-        return False
-    
-    required_files = ["config.json", "tokenizer.json", "tokenizer_config.json"]
-    model_files = [f for f in os.listdir(model_path) if f.endswith(('.bin', '.safetensors'))]
-    
-    for file in required_files:
-        if not os.path.exists(os.path.join(model_path, file)):
-            return False
-    
-    return len(model_files) > 0
-
-def load_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False):
-    """Load model and tokenizer with offline support."""
-    #check if we have the model downloaded already
-    print(f"Checking for model {model_name}...")
-    _ = download_model(model_name)  # Attempt to download if not present
-
-    # Check if we should use online or offline mode
-    if force_offline or not check_internet():
-        print("Using offline mode...")
-        local_path = find_local_model(model_name)
-        if not local_path:
-            raise FileNotFoundError(
-                f"Model {model_name} not found locally. "
-                f"Please run with internet connection first to download the model."
-            )
-        
-        print(f"Loading model from: {local_path}")
-        model = AutoModelForCausalLM.from_pretrained(
-            local_path,
-            dtype="auto",
-            device_map="auto", # This instructs PyTorch to use all available GPUs
-            local_files_only=True
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            local_path,
-            local_files_only=True
-        )
-    else:
-        print(f"Loading {model_name} (will download if needed)...")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            dtype="auto",
-            device_map="auto"
-        )
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    return model, tokenizer
-
-def download_model(model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
-    """Download model for offline use."""
-    import multiprocessing
-    print(f"Ensuring model {model_name} is downloaded...")
-    #do this to put in a separate process to avoid memory bloat in the main process
-    #will use more total memory but avoid fragmentation in the main process
-    #auto deletes when process ends
-    download_process = multiprocessing.Process(target=download_thread, args=(model_name,))
-    download_process.start()
-    
-    # Wait for the process to complete
-    download_process.join()
-    return True
-
-def download_thread(model_name):
-    """Thread target for downloading model."""
-    #auto downloads the model if we don't have it.
-    model = AutoModelForCausalLM.from_pretrained(model_name, dtype="auto")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    return  # just download and cache in huggingface cache
-  
 class SimpleQwen:
-    def __init__(self, model_name="Qwen/Qwen2.5-Coder-7B-Instruct", force_offline=False):
-        self.model, self.tokenizer = load_model(model_name, force_offline)
-        self.torch = torch#__import__("torch")  # Lazy import to avoid unnecessary memory usage if not needed
+    def __init__(self, model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
+        self.model_name = model_name
+        self.local_files_only = self.check_internet()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, 
+                                                       local_files_only=self.local_files_only)
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_name,
+                                                          dtype="auto",
+                                                          device_map="auto", 
+                                                          local_files_only=self.local_files_only)
+        self.model.eval()
         self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant."}]
         self.tools = {}
         self.available_tools = []
@@ -142,7 +46,15 @@ class SimpleQwen:
 
         # Ensure model is in evaluation mode
         self.model.eval()
-    
+
+    def check_internet(self):
+        """Check if internet connection is available."""
+        try:
+            socket.create_connection(("huggingface.co", 443), timeout=5)
+            return True
+        except (socket.timeout, socket.error, OSError):
+            return False
+
     def register_tool(self, func: Callable, name: str = None, description: str = None):
         """Register a tool function."""
         if name is None:
@@ -235,7 +147,7 @@ class SimpleQwen:
         """Helper function to run generation, decode, and aggressively clean memory."""
         
         # Use torch.no_grad() for inference to save memory used by backprop structures
-        with self.torch.no_grad():
+        with torch.no_grad():
             model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
             input_ids_len = model_inputs.input_ids.shape[1]
 
@@ -344,7 +256,7 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
     # Initialize chat, Load model (will download if not present)
-    chat = SimpleQwen(model_name="Qwen/Qwen2.5-Coder-7B-Instruct",force_offline=True)
+    chat = SimpleQwen(model_name="Qwen/Qwen2.5-Coder-7B-Instruct")
     
     # Example tool
     def get_weather(args):

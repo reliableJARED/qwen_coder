@@ -10,7 +10,7 @@ from bart_lg import Summarizer
 
 
 # Define your search query
-query = "what happened with the last starship launch?"
+query = "2025 massachusetts are there ballot questions"
 dd = DDGS()
 
 # Perform the search

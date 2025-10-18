@@ -11,7 +11,7 @@ MAX_CHUNK_TOKENS = 950
 MAX_RESPONSE_TOKENS = 500
 OVERLAP_SIZE = 125  # Number of tokens to overlap between chunks
 MIN_SIMILARITY_REJECTION = 0.5 #when doing a similarity based return, below this is not even included in pool for ranking
-
+TOP_k_RATIO = 0.75 #percential threshold
 class Summarizer:
     #The bart-large-cnn model is a fine-tuned version of the BART (large-sized) model, 
     # which was specifically trained on the CNN/Daily Mail dataset. 
@@ -118,7 +118,7 @@ class Summarizer:
                 
         return chunks
     
-    def summarize_text(self, text, query_match=False, top_k_ratio=0.75):
+    def summarize_text(self, text, query_match=False, top_k_ratio=TOP_k_RATIO):
         chunks = self.split_into_token_chunks(text)
         logging.debug(f"Total chunks created: {len(chunks)}")
 
