@@ -27,7 +27,7 @@ SESSIONS_DIR = Path("chat_sessions")
 SESSIONS_DIR.mkdir(exist_ok=True)
 
 # Static API token for authenticated requests
-QWEN_CODER_API_KEY = os.getenv("QWEN_CODER_API_KEY") 
+QWEN_CODER_API_KEY = str(uuid.uuid4())
 
 # In-memory store for active sessions (can be replaced with Redis or some other DB for persistence)
 active_sessions: Dict[str, Any] = {}

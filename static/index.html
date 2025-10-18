@@ -501,12 +501,14 @@
         @media (max-width: 768px) {
             body {
                 overflow: auto; /* Ensure the body scrolls if needed */
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .app-container {
                 flex-direction: column;
                 height: auto;
                 min-height: 100vh;
+                 overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             /* Left Sidebar - Horizontal scroll at top (10% height) */
@@ -637,6 +639,7 @@
             .messages-container {
                 padding: 12px;
                 flex: 1; /* Take up the remaining space */
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .message {
@@ -652,6 +655,7 @@
                 font-size: 13px;
                 padding: 10px;
                 width: 100%;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .message-actions {
@@ -665,6 +669,7 @@
 
             .input-area {
                 padding: 12px;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .input-wrapper {
@@ -675,6 +680,7 @@
             .message-input {
                 min-height: 60px;
                 font-size: 14px;
+                overflow-x: hidden; /* Prevent horizontal scrolling */
             }
 
             .send-btn {
