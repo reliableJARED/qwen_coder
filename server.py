@@ -27,7 +27,7 @@ SESSIONS_DIR = Path("chat_sessions")
 SESSIONS_DIR.mkdir(exist_ok=True)
 
 # Static API token for authenticated requests
-API_TOKEN = os.getenv("QWEN_CODER_API_KEY") 
+QWEN_CODER_API_KEY = os.getenv("QWEN_CODER_API_KEY") 
 
 # In-memory store for active sessions (can be replaced with Redis or some other DB for persistence)
 active_sessions: Dict[str, Any] = {}
@@ -329,17 +329,18 @@ def delete_file(session_id, filename):
     return jsonify({"success": True})
 
 
-@app.route('/qc')
+@app.route('/qcode')
 def serve_index():
     """
     Serve the React app and set the API token as a cookie.
-    After ngrok OAuth succeeds, this route sets a cookie with the API_TOKEN
+    After ngrok OAuth succeeds, this route sets a cookie with the QWEN_CODER_API_KEY
     so the frontend can use it for authenticated API requests.
     """
     print(request.cookies)
     print(request.headers)
     response = send_from_directory('static', 'index.html')
-    response.set_cookie('qcode_api_token', API_TOKEN, httponly=False, samesite='Strict')
+    print(f"Setting API Token: {QWEN_CODER_API_KEY}")
+    response.set_cookie('qcode_api_token', QWEN_CODER_API_KEY, httponly=False, samesite='Strict')
     return response
 
 
@@ -367,20 +368,21 @@ def setup_ngrok():
     allowed_emails_str = os.getenv("AUTHORIZED_EMAILS", "[]")
     allowed_emails = json.loads(allowed_emails_str)
     allowed_emails_expr = ",".join([f"'{email}'" for email in allowed_emails])
-    print(API_TOKEN)
+    print(QWEN_CODER_API_KEY)
     # Create traffic policy for OAuth protection
     # Create traffic policy that:
     # 1. Allows /api/* requests with valid Bearer token
-    # 2. Allows /qc (root) requests after OAuth email validation
+    # 2. Allows /qcode (root) requests after OAuth email validation
     # 3. All other requests require appropriate auth
 
     traffic_policy = {
         "on_http_request": [
+            #Third Action, Token is set at /qcode, then any /api endpoint can be used.
             {
                 "name": "API routes require Bearer token",
                 "expressions": [
                     "req.url.path.startsWith('/api/')",
-                    f"!('Bearer {API_TOKEN}' in req.headers['qcode_api_token'])"
+                    f"!('Bearer {QWEN_CODER_API_KEY}' in req.headers['qcode_api_token'])"
                 ],
                 "actions": [
                     {
@@ -393,10 +395,11 @@ def setup_ngrok():
                     }
                 ]
             },
+            #First Action, OAuth Initial step
             {
                 "name": "Root and page requests require OAuth",
                 "expressions": [
-                    "!req.url.path.startsWith('/qc/')"
+                    "!req.url.path.startsWith('/qcode/')"
                 ],
                 "actions": [
                     {
@@ -407,10 +410,12 @@ def setup_ngrok():
                     }
                 ]
             },
+            #Second Action, after Google OAuth, will be sent to the /qcode route main entry
+            #other listed endpoints don't exist, just here for example
             {
             "name": "Check authorized emails for web routes",
             "expressions": [
-                "(req.url.path == '/qc' || req.url.path == '/home' || req.url.path == '/login' || req.url.path.startsWith('/static/'))",
+                "(req.url.path == '/qcode' || req.url.path == '/home' || req.url.path == '/login' || req.url.path.startsWith('/static/'))",
                 f"!(actions.ngrok.oauth.identity.email in [{allowed_emails_expr}])"
             ],
             "actions": [
