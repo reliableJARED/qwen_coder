@@ -251,15 +251,6 @@ class SimpleQwen:
                     continue
 
         if tool_calls:
-        
-            # Find where tool calls start to separate content
-            # Check for any of the possible tags
-            offset = -1
-            for tag_pattern in [r"<(?:tools?|functions?|function-calls?)", r"<(?:function|tool)\s+name="]:
-                match = re.search(tag_pattern, content, re.IGNORECASE)
-                if match:
-                    offset = match.start()
-                    break
             
             toolpkg = {
                 "role": "assistant",
@@ -638,9 +629,12 @@ class SimpleQwen:
                 })
         
         iteration = 0
+        tools_were_used = False
         while iteration < max_tool_iterations:
             iteration += 1
-            
+            if tools_were_used:
+                yield "BREAK_HERE_TOOLS_WERE_USED"
+            print(f"[Iteration {iteration}]")
             # Apply chat template with tools
             text = self.tokenizer.apply_chat_template(
                 messages_copy,
@@ -657,7 +651,7 @@ class SimpleQwen:
             for token_text in self._generate_streaming(model_inputs):
                 full_response += token_text
                 yield token_text
-            
+               
             # Clean up input tensors
             del model_inputs
             gc.collect()
@@ -666,6 +660,7 @@ class SimpleQwen:
             parsed_response = self._parse_tool_calls(full_response)
             # Check if model wants to use tools
             if parsed_response.get("tool_calls",False):
+                tools_were_used = True
                 tool_calls = parsed_response.get("tool_calls")
                 #Format the messages for the fact model called tools
                 tool_calls_format =  parsed_response.get("content","")
@@ -736,16 +731,14 @@ if __name__ == "__main__":
             print("Assistant: ", end='', flush=True)
             
             if use_streaming:
+                full_response_text = "" 
                 # Use streaming mode - capture the return value
                 generator = chat.chat_streaming(user_input)
-                try:
-                    for token in generator:
-                        print(token, end='', flush=True)
-                except StopIteration as e:
-                    # The return value is in e.value
-                    final_response = e.value
+                for token in generator:
+                    print(token, end='', flush=True)
+                    full_response_text += token
                 print()  # Newline after streaming
-                print(final_response)
+                print(f"FINAL POST STREAM: {full_response_text}")
             else:
                 # Use regular mode
                 response = chat.chat(user_input)
