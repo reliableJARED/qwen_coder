@@ -33,7 +33,7 @@ class SimpleQwen:
                                                           device_map="auto", 
                                                           local_files_only=self.local_files_only)
         self.model.eval()
-        self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant."}]
+        self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant.When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"}]
         self.tools = {}
         self.available_tools = []
 
@@ -130,79 +130,125 @@ class SimpleQwen:
                         print(f"Error parsing tool call: {e}")
                         continue
         
-        # Pattern 2: Self-closing XML tags like <function name="..." arguments='...' />
-        # Matches: <function name="get_weather" arguments='{"location": "boston"}' />
-        xml_pattern = r'<(?:function|function-call|tool)\s+name=["\']([^"\']+)["\']\s+arguments=["\']([^"\']+)["\']\s*/>'
-        for match in re.finditer(xml_pattern, content, re.IGNORECASE):
-            function_name = match.group(1)
-            arguments_str = match.group(2)
-            
-            try:
-                # Parse the arguments JSON
-                arguments = json.loads(arguments_str)
-                print(f"Tool Call (XML): {function_name} with args {arguments}")
+        #If we found tools already don't run:
+        if not tool_calls:
+            # Pattern 2: Self-closing XML tags like <function name="..." arguments='...' />
+            # Matches: <function name="get_weather" arguments='{"location": "boston"}' />
+            xml_pattern = r'<(?:function|function-call|tool)\s+name=["\']([^"\']+)["\']\s+arguments=["\']([^"\']+)["\']\s*/>'
+            for match in re.finditer(xml_pattern, content, re.IGNORECASE):
+                function_name = match.group(1)
+                arguments_str = match.group(2)
                 
-                tool_calls.append({
-                    "id": self._generate_tool_call_id(),
-                    "type": "function",
-                    "function": {
-                        "name": function_name,
-                        "arguments": arguments
-                    }
-                })
-            except json.JSONDecodeError as e:
-                print(f"Error parsing XML-style tool call arguments: {e}")
-                continue
-        
-        # Pattern 3: Plain markdown code blocks with JSON containing tool calls
-        # Matches: ```json\n{"name": "get_movies", ...}\n``` or just ```\n{"name": ...}\n```
-        markdown_pattern = r'```(?:json)?\s*(\{[^`]+\})\s*```'
-        for match in re.finditer(markdown_pattern, content, re.DOTALL | re.IGNORECASE):
-            json_block = match.group(1).strip()
-            
-            try:
-                tool_call_json = json.loads(json_block)
-                
-                # Check if this JSON has a "name" field that matches one of our registered tools
-                if "name" in tool_call_json and tool_call_json["name"] in self.tools:
-                    print(f"Tool Call (Markdown): {tool_call_json}")
+                try:
+                    # Parse the arguments JSON
+                    arguments = json.loads(arguments_str)
+                    print(f"Tool Call (XML): {function_name} with args {arguments}")
                     
                     tool_calls.append({
                         "id": self._generate_tool_call_id(),
                         "type": "function",
                         "function": {
-                            "name": tool_call_json["name"],
-                            "arguments": tool_call_json.get("arguments", {})
+                            "name": function_name,
+                            "arguments": arguments
                         }
                     })
-            except json.JSONDecodeError as e:
-                print(f"Error parsing markdown code block: {e}")
-                continue
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing XML-style tool call arguments: {e}")
+                    continue
 
-    # Pattern 4: <function_call>, <tool_call>, <tool>, or <function> with nested <name> and <arguments> tags
-        # Matches: <function_call>\n    <name>get_movies</name>\n    <arguments>{"location": "boston"}</arguments>\n</function_call>
-        function_call_pattern = r'<(?:function_call|tool_call|tool|function)>\s*<name>([^<]+)</name>\s*<arguments>([^<]+)</arguments>\s*</(?:function_call|tool_call|tool|function)>'
-        for match in re.finditer(function_call_pattern, content, re.DOTALL | re.IGNORECASE):
-            function_name = match.group(1).strip()
-            arguments_str = match.group(2).strip()
-            
-            try:
-                # Parse the arguments JSON
-                arguments = json.loads(arguments_str)
-                print(f"Tool Call (nested XML): {function_name} with args {arguments}")
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 3: Markdown code blocks with JSON containing tool calls
+            # Matches: ```json\n{"name": "get_movies", ...}\n``` or ```xml\n{"name": ...}\n```
+            markdown_pattern = r'```(?:json|xml)?\s*(\{[^`]+\})\s*```'
+            for match in re.finditer(markdown_pattern, content, re.DOTALL | re.IGNORECASE):
+                json_block = match.group(1).strip()
                 
-                tool_calls.append({
-                    "id": self._generate_tool_call_id(),
-                    "type": "function",
-                    "function": {
-                        "name": function_name,
-                        "arguments": arguments
-                    }
-                })
-            except json.JSONDecodeError as e:
-                print(f"Error parsing nested XML tool call arguments: {e}")
-                continue
+                try:
+                    tool_call_json = json.loads(json_block)
+                    
+                    # Check if this JSON has a "name" field that matches one of our registered tools
+                    if "name" in tool_call_json and tool_call_json["name"] in self.tools:
+                        print(f"Tool Call (Markdown): {tool_call_json}")
+                        
+                        arguments = tool_call_json.get("arguments", {})
+                        if not isinstance(arguments, dict):
+                            print(f"Warning: arguments is not a dict, converting: {arguments}")
+                            arguments = {}
+                        
+                        tool_calls.append({
+                            "id": self._generate_tool_call_id(),
+                            "type": "function",
+                            "function": {
+                                "name": tool_call_json["name"],
+                                "arguments": arguments
+                            }
+                        })
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing markdown code block: {e}")
+                    continue
 
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 4: <function_call>, <tool_call>, <tool>, or <function> with nested <name> and <arguments> tags
+            # Matches: <function_call>\n    <name>get_movies</name>\n    <arguments>{"location": "boston"}</arguments>\n</function_call>
+            function_call_pattern = r'<(?:function_call|tool_call|tool|function)>\s*<name>([^<]+)</name>\s*<arguments>([^<]+)</arguments>\s*</(?:function_call|tool_call|tool|function)>'
+            for match in re.finditer(function_call_pattern, content, re.DOTALL | re.IGNORECASE):
+                function_name = match.group(1).strip()
+                arguments_str = match.group(2).strip()
+                
+                try:
+                    # Parse the arguments JSON
+                    arguments = json.loads(arguments_str)
+                    print(f"Tool Call (nested XML): {function_name} with args {arguments}")
+                    
+                    tool_calls.append({
+                        "id": self._generate_tool_call_id(),
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": arguments
+                        }
+                    })
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing nested XML tool call arguments: {e}")
+                    continue
+
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 5: Standalone JSON that looks like a tool call
+            # Catches: {"name": "get_weather", "arguments": {"location": "boston"}}
+            # MUST validate 'name' matches a registered tool to avoid false positives
+            standalone_json_pattern = r'(?:^|\n)\s*(\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{.*?\}\s*\})'
+            for match in re.finditer(standalone_json_pattern, content, re.DOTALL | re.IGNORECASE):
+                json_block = match.group(1).strip()
+                
+                try:
+                    tool_call_json = json.loads(json_block)
+                    
+                    # CRITICAL: Only treat as tool call if name matches a registered tool
+                    if "name" in tool_call_json and tool_call_json["name"] in self.tools:
+                        print(f"Tool Call (Standalone JSON): {tool_call_json}")
+                        
+                        arguments = tool_call_json.get("arguments", {})
+                        if not isinstance(arguments, dict):
+                            arguments = {}
+                        
+                        tool_calls.append({
+                            "id": self._generate_tool_call_id(),
+                            "type": "function",
+                            "function": {
+                                "name": tool_call_json["name"],
+                                "arguments": arguments
+                            }
+                        })
+                    else:
+                        # This is just regular JSON output, not a tool call
+                        pass
+                        
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing standalone JSON: {e}")
+                    continue
 
         if tool_calls:
         
