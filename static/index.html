@@ -717,30 +717,21 @@
                     const language = Prism.languages[lang] || Prism.languages.clike;
                     return Prism.highlight(code, language, lang);
                 },
-                // Added for safety, though highlight function should handle escaping
                 gfm: true,
-                breaks: true, // Allow single line breaks to render as <br>
+                breaks: true,
             });
 
-            // 1. Convert Markdown to HTML
-            // Note: Marked.js handles the conversion of ```python blocks to <pre><code class="language-python">
             const htmlContent = marked.parse(content || '');
 
-
             useEffect(() => {
-                // 2. Since React is rendering the raw HTML, we must manually tell Prism 
-                // to re-parse and highlight the blocks after the DOM update.
                 if (contentRef.current) {
                     contentRef.current.querySelectorAll('pre code').forEach((block) => {
                         Prism.highlightElement(block);
                     });
                 }
-            }); 
-            // We use no dependency array so it reruns every time the message content potentially changes, 
-            // ensuring dynamic streams or updates are handled.
+            });
 
             return (
-                // 3. Render the HTML content using dangerouslySetInnerHTML
                 <div 
                     ref={contentRef} 
                     dangerouslySetInnerHTML={{ __html: htmlContent }} 
@@ -750,10 +741,8 @@
 
         /**
          * Main App Component
-         * Manages the overall state and coordinates between sidebar, chat, and files
          */
         function App() {
-            // State management
             const [sessions, setSessions] = useState([]);
             const [currentSessionId, setCurrentSessionId] = useState(null);
             const [messages, setMessages] = useState([]);
@@ -766,14 +755,10 @@
             const [loading, setLoading] = useState(false);
             const [editingMessageIndex, setEditingMessageIndex] = useState(null);
             const [editingContent, setEditingContent] = useState('');
+            const [useStreaming, setUseStreaming] = useState(true);
+            const [streamingContent, setStreamingContent] = useState('');
             
-            /**
-             * getAuthHeaders - Helper function to include Bearer token in all API requests
-             * The token is set as a cookie by Flask after OAuth succeeds.
-             * @returns {Object} Headers object with Authorization token
-             */
             const getAuthHeaders = () => {
-                // Read the api_token from cookies
                 const token = document.cookie
                     .split('; ')
                     .find(row => row.startsWith('qcode_api_token'))
@@ -785,14 +770,10 @@
                 };
             };
 
-            // Load sessions on component mount
             useEffect(() => {
                 loadSessions();
             }, []);
 
-            /**
-             * Fetch all available chat sessions from server
-             */
             const loadSessions = async () => {
                 try {
                     const response = await fetch(`${API_URL}/sessions`, {
@@ -805,9 +786,6 @@
                 }
             };
 
-            /**
-             * Create a new chat session
-             */
             const createNewSession = async () => {
                 try {
                     const response = await fetch(`${API_URL}/sessions`, {
@@ -816,16 +794,12 @@
                     });
                     const data = await response.json();
                     await loadSessions();
-                    await loadSession(data.session_id);//let it load
+                    await loadSession(data.session_id);
                 } catch (error) {
                     console.error('Error creating session:', error);
                 }
             };
 
-            /**
-             * Load a specific session's data
-             * @param {string} sessionId - The session ID to load
-             */
             const loadSession = async (sessionId) => {
                 try {
                     const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
@@ -842,9 +816,6 @@
                 }
             };
 
-            /**
-             * Update the system prompt for current session
-             */
             const updateSystemPrompt = async () => {
                 if (!currentSessionId) return;
                 
@@ -856,31 +827,25 @@
                     });
                     setSystemPrompt(tempSystemPrompt);
                     setSystemPromptExpanded(false);
-                    // Reload session to get updated messages
                     loadSession(currentSessionId);
                 } catch (error) {
                     console.error('Error updating system prompt:', error);
                 }
             };
 
-            /**
-             * Send a user message and get AI response
-             */
             const sendMessage = async () => {
                 if (!inputMessage.trim() || !currentSessionId) return;
 
                 setLoading(true);
+                setStreamingContent('');
+                
                 try {
-                    const response = await fetch(`${API_URL}/sessions/${currentSessionId}/messages`, {
-                        method: 'POST',
-                        headers: getAuthHeaders(),
-                        body: JSON.stringify({ content: inputMessage })
-                    });
-                    const data = await response.json();
-                    setMessages(data.all_messages);
-                    setTokenCount(data.total_tokens);
+                    if (useStreaming) {
+                        await sendStreamingMessage();
+                    } else {
+                        await sendNonStreamingMessage();
+                    }
                     setInputMessage('');
-                    await loadSessions(); // Update session preview
                 } catch (error) {
                     console.error('Error sending message:', error);
                 } finally {
@@ -888,20 +853,122 @@
                 }
             };
 
-            /**
-             * Start editing a message
-             * @param {number} index - Message index to edit
-             * @param {string} content - Current message content
-             */
+            const sendStreamingMessage = async () => {
+                const token = document.cookie
+                    .split('; ')
+                    .find(row => row.startsWith('qcode_api_token'))
+                    ?.split('=')[1];
+
+                const response = await fetch(`${API_URL}/sessions/${currentSessionId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        content: inputMessage,
+                        stream: true 
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let accumulatedContent = '';
+                let messagesUpdated = false;
+
+                // Add a temporary streaming message
+                const userMsg = { role: 'user', content: inputMessage };
+                const streamingMsg = { role: 'assistant', content: '', streaming: true };
+
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            console.log('Stream complete');
+                            break;
+                        }
+
+                        // Decode the chunk
+                        buffer += decoder.decode(value, { stream: true });
+                        
+                        // Process complete lines
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                        for (const line of lines) {
+                            if (line.trim() === '') continue;
+                            
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    
+                                    if (data.type === 'user_message') {
+                                        // Initial message update
+                                        setMessages([...data.messages, streamingMsg]);
+                                        messagesUpdated = true;
+                                    } else if (data.type === 'token') {
+                                        // Accumulate token
+                                        accumulatedContent += data.content;
+                                        
+                                        // Update the streaming message in real-time
+                                        setMessages(prev => {
+                                            const updated = [...prev];
+                                            const lastIdx = updated.length - 1;
+                                            if (lastIdx >= 0 && updated[lastIdx].streaming) {
+                                                updated[lastIdx] = {
+                                                    ...updated[lastIdx],
+                                                    content: accumulatedContent
+                                                };
+                                            }
+                                            return updated;
+                                        });
+                                    } else if (data.type === 'complete') {
+                                        // Final update with complete data
+                                        setMessages(data.all_messages);
+                                        setTokenCount(data.total_tokens);
+                                        setStreamingContent('');
+                                        await loadSessions();
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing SSE data:', e, line);
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Streaming error:', error);
+                    // Clean up streaming message on error
+                    setMessages(prev => prev.filter(m => !m.streaming));
+                    throw error;
+                }
+            };
+
+            const sendNonStreamingMessage = async () => {
+                const response = await fetch(`${API_URL}/sessions/${currentSessionId}/messages`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ 
+                        content: inputMessage,
+                        stream: false 
+                    })
+                });
+                const data = await response.json();
+                setMessages(data.all_messages);
+                setTokenCount(data.total_tokens);
+                await loadSessions();
+            };
+
             const startEditingMessage = (index, content) => {
                 setEditingMessageIndex(index);
                 setEditingContent(content);
             };
 
-            /**
-             * Save edited message to server
-             * @param {number} index - Message index to save
-             */
             const saveEditedMessage = async (index) => {
                 if (!currentSessionId) return;
 
@@ -920,10 +987,6 @@
                 }
             };
 
-            /**
-             * Delete a message from the conversation
-             * @param {number} index - Message index to delete
-             */
             const deleteMessage = async (index) => {
                 if (!currentSessionId) return;
 
@@ -939,17 +1002,12 @@
                 }
             };
 
-            /**
-             * Upload a file to the current session
-             * @param {File} file - File object to upload
-             */
             const uploadFile = async (file) => {
                 if (!currentSessionId) return;
 
                 const formData = new FormData();
                 formData.append('file', file);
 
-                // Read the api_token from cookies
                 const token = document.cookie
                     .split('; ')
                     .find(row => row.startsWith('qcode_api_token'))
@@ -960,7 +1018,6 @@
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${token}`
-                            // Note: Don't set Content-Type for FormData - browser sets it automatically with boundary
                         },
                         body: formData
                     });
@@ -972,10 +1029,6 @@
                 }
             };
 
-            /**
-             * Delete a file from the current session
-             * @param {string} filename - Name of file to delete
-             */
             const deleteFile = async (filename) => {
                 if (!currentSessionId) return;
 
@@ -992,7 +1045,6 @@
 
             return (
                 <div className="app-container">
-                    {/* Left Sidebar - Conversations */}
                     <Sidebar 
                         sessions={sessions}
                         currentSessionId={currentSessionId}
@@ -1000,7 +1052,6 @@
                         onSelectSession={loadSession}
                     />
 
-                    {/* Center - Main Chat Area */}
                     <div className="main-content">
                         <SystemPromptSection
                             systemPrompt={systemPrompt}
@@ -1029,10 +1080,11 @@
                             onSend={sendMessage}
                             loading={loading}
                             disabled={!currentSessionId}
+                            useStreaming={useStreaming}
+                            setUseStreaming={setUseStreaming}
                         />
                     </div>
 
-                    {/* Right Sidebar - Files */}
                     <FilesSidebar
                         files={files}
                         onUpload={uploadFile}
@@ -1044,38 +1096,36 @@
         }
 
         /**
-         * Sidebar Component - Displays conversation list
+         * Sidebar Component
          */
         function Sidebar({ sessions, currentSessionId, onNewChat, onSelectSession }) {
-                //session.id is a timestamp, so sorting by id descending gives newest first
-                // Sort sessions by id in descending order (newest to oldest)
-                const sortedSessions = [...sessions].sort((a, b) => b.id - a.id);
+            const sortedSessions = [...sessions].sort((a, b) => b.id - a.id);
 
-                return (
-                    <div className="sidebar">
-                        <div className="sidebar-header">
-                            <button className="new-chat-btn" onClick={onNewChat}>
-                                + New Conversation
-                            </button>
-                        </div>
-                        <div className="conversations-list">
-                            {sortedSessions.map(session => (
-                                <div
-                                    key={session.id}
-                                    className={`conversation-item ${session.id === currentSessionId ? 'active' : ''}`}
-                                    onClick={() => onSelectSession(session.id)}
-                                >
-                                    <div className="conversation-preview">{session.preview}</div>
-                                    <div className="conversation-meta">{session.message_count} messages</div>
-                                </div>
-                            ))}
-                        </div>
+            return (
+                <div className="sidebar">
+                    <div className="sidebar-header">
+                        <button className="new-chat-btn" onClick={onNewChat}>
+                            + New Conversation
+                        </button>
                     </div>
-                );
-            }
+                    <div className="conversations-list">
+                        {sortedSessions.map(session => (
+                            <div
+                                key={session.id}
+                                className={`conversation-item ${session.id === currentSessionId ? 'active' : ''}`}
+                                onClick={() => onSelectSession(session.id)}
+                            >
+                                <div className="conversation-preview">{session.preview}</div>
+                                <div className="conversation-meta">{session.message_count} messages</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
 
         /**
-         * System Prompt Section Component - Collapsible editor for system prompt
+         * System Prompt Section Component
          */
         function SystemPromptSection({ systemPrompt, tempSystemPrompt, setTempSystemPrompt, expanded, setExpanded, onUpdate }) {
             return (
@@ -1103,12 +1153,11 @@
         }
 
         /**
-         * Messages Area Component - Displays chat messages with edit/delete functionality
+         * Messages Area Component
          */
         function MessagesArea({ messages, editingMessageIndex, editingContent, setEditingContent, onStartEditing, onSaveEdit, onCancelEdit, onDelete, total_tokens }) {
             const messagesEndRef = useRef(null);
 
-            // Auto-scroll to bottom when new messages arrive
             useEffect(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [messages]);
@@ -1116,13 +1165,14 @@
             return (
                 <div className="messages-container">
                     {messages.slice(1).map((message, index) => {
-                        const actualIndex = index + 1; // Account for system message at index 0
+                        const actualIndex = index + 1;
                         const isEditing = editingMessageIndex === actualIndex;
 
                         return (
                             <div key={actualIndex} className="message">
                                 <div className="message-role">
                                     {message.role}
+                                    {message.streaming && <span className="streaming-indicator"> (streaming...)</span>}
                                 </div>
                                 <div className="message-content-wrapper">
                                     <div className={`message-content ${isEditing ? 'editing' : ''}`}>
@@ -1134,7 +1184,6 @@
                                                 autoFocus
                                             />
                                         ) : (
-                                            // Syntax Style COMPONENT
                                             <HighlightedMessageContent content={message.content} />
                                         )}
                                     </div>
@@ -1156,48 +1205,47 @@
                                             </>
                                         ) : (
                                             <>
-                                                <button 
-                                                    className="message-btn" 
-                                                    onClick={() => onStartEditing(actualIndex, message.content)}
-                                                >
-                                                    Edit
-                                                </button>
-                                                <button 
-                                                    className="message-btn danger" 
-                                                    onClick={() => onDelete(actualIndex)}
-                                                >
-                                                    Delete
-                                                </button>
-                                                <span   className="tokens-display">Tokens: {message.token_count}</span>
+                                                {!message.streaming && (
+                                                    <>
+                                                        <button 
+                                                            className="message-btn" 
+                                                            onClick={() => onStartEditing(actualIndex, message.content)}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button 
+                                                            className="message-btn danger" 
+                                                            onClick={() => onDelete(actualIndex)}
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                        <span className="tokens-display">Tokens: {message.token_count}</span>
+                                                    </>
+                                                )}
                                             </>
                                         )}
                                     </div>
-                                    
                                 </div>
                             </div>
                         );
                     })}
                     <div ref={messagesEndRef} />
 
-                    {/* Display total tokens using the CSS class */}
-                        {total_tokens && (
-                            <div className="tokens-display">
-                                <strong>Total Tokens: {total_tokens}</strong>
-                            </div>
-                        )}
-
+                    {total_tokens && (
+                        <div className="tokens-display">
+                            <strong>Total Tokens: {total_tokens}</strong>
+                        </div>
+                    )}
                 </div>
             );
         }
 
         /**
-         * Input Area Component - Text input and send button
+         * Input Area Component
          */
-        function InputArea({ inputMessage, setInputMessage, onSend, loading, disabled }) {
-
+        function InputArea({ inputMessage, setInputMessage, onSend, loading, disabled, useStreaming, setUseStreaming }) {
             const textareaRef = useRef(null);
     
-            // Auto-focus text input area when enabled
             useEffect(() => {
                 if (!disabled && textareaRef.current) {
                     textareaRef.current.focus();
@@ -1213,9 +1261,20 @@
 
             return (
                 <div className="input-area">
+                    <div className="streaming-toggle">
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={useStreaming}
+                                onChange={(e) => setUseStreaming(e.target.checked)}
+                                disabled={disabled}
+                            />
+                            <span style={{marginLeft: '8px'}}>Enable Streaming</span>
+                        </label>
+                    </div>
                     <div className="input-wrapper">
                         <textarea
-                            ref={textareaRef}  //used as focus ref
+                            ref={textareaRef}
                             className="message-input"
                             value={inputMessage}
                             onChange={(e) => setInputMessage(e.target.value)}
@@ -1236,25 +1295,22 @@
         }
 
         /**
-         * Files Sidebar Component - File upload and management
+         * Files Sidebar Component
          */
         function FilesSidebar({ files, onUpload, onDelete, disabled }) {
             const [isDragging, setIsDragging] = useState(false);
             const fileInputRef = useRef(null);
 
-            // Handle drag over event
             const handleDragOver = (e) => {
                 e.preventDefault();
                 setIsDragging(true);
             };
 
-            // Handle drag leave event
             const handleDragLeave = (e) => {
                 e.preventDefault();
                 setIsDragging(false);
             };
 
-            // Handle file drop
             const handleDrop = (e) => {
                 e.preventDefault();
                 setIsDragging(false);
@@ -1267,7 +1323,6 @@
                 }
             };
 
-            // Handle file selection via input
             const handleFileSelect = (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -1275,7 +1330,6 @@
                 }
             };
 
-            // Validate and upload file
             const handleFileUpload = (file) => {
                 const allowedExtensions = ['.py', '.txt', '.html', '.js'];
                 const fileExt = '.' + file.name.split('.').pop().toLowerCase();
@@ -1288,7 +1342,6 @@
                 onUpload(file);
             };
 
-            // Format file size for display
             const formatFileSize = (bytes) => {
                 if (bytes < 1024) return bytes + ' B';
                 if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1344,7 +1397,6 @@
             );
         }
 
-        // Render the app
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>

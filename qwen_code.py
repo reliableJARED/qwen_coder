@@ -9,6 +9,8 @@ import string
 from typing import List, Dict, Any, Callable, Generator
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
 """max_split_size_mb:256: This parameter sets the maximum size (in megabytes) of a free memory block that the allocator will split 
@@ -38,7 +40,7 @@ class SimpleQwen:
         self.available_tools = []
 
         first_param_dtype = next(self.model.parameters()).dtype
-        print(f"The model's data type is: {first_param_dtype}")
+        logging.debug(f"The model's data type is: {first_param_dtype}")
         self.model.eval()
 
     def check_internet(self):
@@ -81,7 +83,7 @@ class SimpleQwen:
         """Parse tool calls from model output - handles multiple tools and various formats.
         Qwen 7B was NOT consistent with tool call formats so have 3 observed patterns for parsing"""
         tool_calls = []
-        print(f"TOOL ARGS: {content}")
+        logging.debug(f"TOOL ARGS: {content}")
         # First, strip markdown code blocks if present (```xml ... ``` or ```json ... ```)
         # This handles cases where the model wraps tool calls in code blocks
         content = re.sub(r'```(?:xml|json)?\s*', '', content, flags=re.IGNORECASE)
@@ -96,7 +98,7 @@ class SimpleQwen:
             # Try to parse the entire block as a single JSON object first
             try:
                 tool_call_json = json.loads(tools_block)
-                print(f"Tool Call Json (single): {tool_call_json}")
+                logging.debug(f"Tool Call Json (single): {tool_call_json}")
                 
                 # Create tool call with ID
                 tool_calls.append({
@@ -115,7 +117,7 @@ class SimpleQwen:
                         continue
                     try:
                         tool_call_json = json.loads(line)
-                        print(f"Tool Call Json (line): {tool_call_json}")
+                        logging.debug(f"Tool Call Json (line): {tool_call_json}")
                         
                         # Create tool call with ID
                         tool_calls.append({
@@ -127,7 +129,7 @@ class SimpleQwen:
                             }
                         })
                     except json.JSONDecodeError as e:
-                        print(f"Error parsing tool call: {e}")
+                        logging.debug(f"Error parsing tool call: {e}")
                         continue
         
         #If we found tools already don't run:
@@ -142,7 +144,7 @@ class SimpleQwen:
                 try:
                     # Parse the arguments JSON
                     arguments = json.loads(arguments_str)
-                    print(f"Tool Call (XML): {function_name} with args {arguments}")
+                    logging.debug(f"Tool Call (XML): {function_name} with args {arguments}")
                     
                     tool_calls.append({
                         "id": self._generate_tool_call_id(),
@@ -153,7 +155,7 @@ class SimpleQwen:
                         }
                     })
                 except json.JSONDecodeError as e:
-                    print(f"Error parsing XML-style tool call arguments: {e}")
+                    logging.debug(f"Error parsing XML-style tool call arguments: {e}")
                     continue
 
         #If we found tools already don't run:
@@ -169,11 +171,11 @@ class SimpleQwen:
                     
                     # Check if this JSON has a "name" field that matches one of our registered tools
                     if "name" in tool_call_json and tool_call_json["name"] in self.tools:
-                        print(f"Tool Call (Markdown): {tool_call_json}")
+                        logging.debug(f"Tool Call (Markdown): {tool_call_json}")
                         
                         arguments = tool_call_json.get("arguments", {})
                         if not isinstance(arguments, dict):
-                            print(f"Warning: arguments is not a dict, converting: {arguments}")
+                            logging.debug(f"Warning: arguments is not a dict, converting: {arguments}")
                             arguments = {}
                         
                         tool_calls.append({
@@ -185,7 +187,7 @@ class SimpleQwen:
                             }
                         })
                 except json.JSONDecodeError as e:
-                    print(f"Error parsing markdown code block: {e}")
+                    logging.debug(f"Error parsing markdown code block: {e}")
                     continue
 
         #If we found tools already don't run:
@@ -200,7 +202,7 @@ class SimpleQwen:
                 try:
                     # Parse the arguments JSON
                     arguments = json.loads(arguments_str)
-                    print(f"Tool Call (nested XML): {function_name} with args {arguments}")
+                    logging.debug(f"Tool Call (nested XML): {function_name} with args {arguments}")
                     
                     tool_calls.append({
                         "id": self._generate_tool_call_id(),
@@ -211,7 +213,7 @@ class SimpleQwen:
                         }
                     })
                 except json.JSONDecodeError as e:
-                    print(f"Error parsing nested XML tool call arguments: {e}")
+                    logging.error(f"Error parsing nested XML tool call arguments: {e}")
                     continue
 
         #If we found tools already don't run:
@@ -228,7 +230,7 @@ class SimpleQwen:
                     
                     # CRITICAL: Only treat as tool call if name matches a registered tool
                     if "name" in tool_call_json and tool_call_json["name"] in self.tools:
-                        print(f"Tool Call (Standalone JSON): {tool_call_json}")
+                        logging.debug(f"Tool Call (Standalone JSON): {tool_call_json}")
                         
                         arguments = tool_call_json.get("arguments", {})
                         if not isinstance(arguments, dict):
@@ -247,7 +249,7 @@ class SimpleQwen:
                         pass
                         
                 except json.JSONDecodeError as e:
-                    print(f"Error parsing standalone JSON: {e}")
+                    logging.debug(f"Error parsing standalone JSON: {e}")
                     continue
 
         if tool_calls:
@@ -260,7 +262,7 @@ class SimpleQwen:
                         },
                 "tool_calls": tool_calls
             }
-            print(f"\nTOOLS DETECTED: {toolpkg}\n\n")
+            logging.debug(f"\nTOOLS DETECTED: {toolpkg}\n\n")
             return toolpkg
         else:
             return {
@@ -288,7 +290,7 @@ class SimpleQwen:
                             "name": str(function_name),
                             "content": json.dumps(result) if not isinstance(result, str) else result
                         }
-                        print(x)
+                        logging.debug(x)
                         tool_results.append({
                             "role": "tool",
                             "name": function_name,
@@ -334,7 +336,7 @@ class SimpleQwen:
         ]
         output_tokens_count = len(output_tokens[0])
         tps = output_tokens_count / generation_time
-        print(f"[Timing Check] Generated {output_tokens_count} tokens in {generation_time:.3f}s. Observed GPU TPS: {tps:.2f}")
+        logging.debug(f"[Timing Check] Generated {output_tokens_count} tokens in {generation_time:.3f}s. Observed GPU TPS: {tps:.2f}")
         
         response_text = self.tokenizer.batch_decode(output_tokens, skip_special_tokens=True)[0]
         
@@ -501,7 +503,7 @@ class SimpleQwen:
         
         generation_time = time.time() - start_time
         tps = len(generated_token_ids) / generation_time if generation_time > 0 else 0
-        #print(f"\n[Streaming] Generated {len(generated_token_ids)} tokens in {generation_time:.3f}s. TPS: {tps:.2f}")
+        #logging.debug(f"\n[Streaming] Generated {len(generated_token_ids)} tokens in {generation_time:.3f}s. TPS: {tps:.2f}")
         
         # Decode the full response
         if generated_token_ids:
@@ -516,6 +518,13 @@ class SimpleQwen:
         tokens = self.tokenizer.encode(text)
         return len(tokens)
     
+    def strip_response_tags(self,text: str) -> str:
+        """Extract content between response tags, or return original if no tags."""
+        match = re.search(r'<response>(.*?)</response>', text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return text.strip()
+
     def chat(self, user_input: str, file_contents: list = None, max_tool_iterations: int = 5) -> str:
         """
         Generate response with recursive tool support.
@@ -538,8 +547,8 @@ class SimpleQwen:
         iteration = 0
         while iteration < max_tool_iterations:
             iteration += 1
-            print(f"\n[Generation iteration {iteration}]")
-            print(f"\nMessages:{messages_copy}\n")
+            logging.debug(f"\n[Generation iteration {iteration}]")
+            logging.debug(f"\nMessages:{messages_copy}\n")
             
             # Apply chat template
             # On first iteration: add_generation_prompt=True
@@ -575,8 +584,8 @@ class SimpleQwen:
                 tool_calls_format =  parsed_response.get("content","")
                 messages_copy.append(tool_calls_format)
                 
-                print(f"post parse: {tool_calls}")
-                print(f"[Found {len(tool_calls)} tool call(s)]")
+                logging.debug(f"post parse: {tool_calls}")
+                logging.debug(f"[Found {len(tool_calls)} tool call(s)]")
                 
                 tool_results = self._execute_tool_calls(tool_calls)
                 messages_copy.extend(tool_results)
@@ -584,13 +593,15 @@ class SimpleQwen:
                 # Continue loop to generate response with results from tools
                 continue
             else:
+                #strip the <response> tags if model used them
+                parsed_response["content"] = self.strip_response_tags(parsed_response["content"])
                 # No more tool calls, we're done
                 messages_copy.append(parsed_response)
-                print("[No tool calls - finishing]")
+                logging.debug("[No tool calls - finishing]")
                 break
         
         if iteration >= max_tool_iterations:
-            print(f"[Warning: Reached max tool iterations ({max_tool_iterations})]")
+            logging.debug(f"[Warning: Reached max tool iterations ({max_tool_iterations})]")
         
         # Update the actual message history with all the interactions
         self.messages = messages_copy
@@ -634,7 +645,8 @@ class SimpleQwen:
             iteration += 1
             if tools_were_used:
                 yield "BREAK_HERE_TOOLS_WERE_USED"
-            print(f"[Iteration {iteration}]")
+                
+            logging.debug(f"[Iteration {iteration}]")
             # Apply chat template with tools
             text = self.tokenizer.apply_chat_template(
                 messages_copy,
@@ -666,8 +678,8 @@ class SimpleQwen:
                 tool_calls_format =  parsed_response.get("content","")
                 messages_copy.append(tool_calls_format)
                 
-                print(f"post parse: {tool_calls}")
-                print(f"[Found {len(tool_calls)} tool call(s)]")
+                logging.debug(f"post parse: {tool_calls}")
+                logging.debug(f"[Found {len(tool_calls)} tool call(s)]")
                 
                 tool_results = self._execute_tool_calls(tool_calls)
                 messages_copy.extend(tool_results)
@@ -675,13 +687,15 @@ class SimpleQwen:
                 # Continue loop to generate response with results from tools
                 continue
             else:
+                #strip the <response> tags if model used them
+                parsed_response["content"] = self.strip_response_tags(parsed_response["content"])
                 # No more tool calls, we're done
                 messages_copy.append(parsed_response)
-                print("[No tool calls - finishing]")
+                logging.debug("[No tool calls - finishing]")
                 break
         
         if iteration >= max_tool_iterations:
-            print(f"\n[Warning: Reached max tool iterations ({max_tool_iterations})]")
+            logging.debug(f"\n[Warning: Reached max tool iterations ({max_tool_iterations})]")
         
         # Update the actual message history
         self.messages = messages_copy
@@ -704,14 +718,14 @@ if __name__ == "__main__":
     def get_movies(args):
         """Get movies information for a location."""
         location = args.get("location", "unknown")
-        print(f"GET MOVIES: {args}")
+        logging.debug(f"GET MOVIES: {args}")
         return f"The movies playing in Boston are Back To The Future 2 at 8pm"
     
     chat.register_tool(get_weather, description="Get current weather for a location")
     chat.register_tool(get_movies, description="Get current movies playing in a location")
     
-    print("Chat started! Type 'quit' or 'exit' to end.")
-    print("Type 'stream' to toggle streaming mode.\n")
+    logging.debug("Chat started! Type 'quit' or 'exit' to end.")
+    logging.debug("Type 'stream' to toggle streaming mode.\n")
     
     use_streaming = False
     
@@ -738,7 +752,7 @@ if __name__ == "__main__":
                     print(token, end='', flush=True)
                     full_response_text += token
                 print()  # Newline after streaming
-                print(f"FINAL POST STREAM: {full_response_text}")
+                logging.debug(f"FINAL POST STREAM: {full_response_text}")
             else:
                 # Use regular mode
                 response = chat.chat(user_input)
@@ -746,4 +760,4 @@ if __name__ == "__main__":
             
             loop_end = time.time()
             elapsed = loop_end - loop_start
-            print(f"\n[Response took {elapsed:.2f} seconds]")
+            logging.debug(f"\n[Response took {elapsed:.2f} seconds]")

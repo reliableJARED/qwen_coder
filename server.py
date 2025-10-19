@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import os
 import pickle
@@ -184,9 +184,10 @@ def update_system_prompt(session_id):
 @app.route('/api/sessions/<session_id>/messages', methods=['POST'])
 def send_message(session_id):
     global coder
-    """Send a message and get AI response."""
+    """Send a message and get AI response (with optional streaming)."""
     data = request.json
     user_message = data.get('content', '')
+    stream = data.get('stream', False)  # Check if streaming is requested
     
     session_data = SessionManager.load_session(session_id)
     if not session_data:
@@ -198,29 +199,69 @@ def send_message(session_id):
     # Add user message
     session_data["messages"].append({"role": "user", "content": user_message, "token_count": input_token_count})
 
-    # Get AI response
-    response = coder.chat(user_message, file_contents=session_data["files"])
-    assistant_response = f"{response}"
+    if stream:
+        # Streaming response
+        def generate():
+            assistant_response = ""
+            
+            # Send initial data with user message
+            yield f"data: {json.dumps({'type': 'user_message', 'messages': session_data['messages']})}\n\n"
+            
+            # Stream tokens from the model
+            for token in coder.chat_streaming(user_message, file_contents=session_data["files"]):
+                assistant_response += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+            
+            # Calculate final token count
+            output_token_count = coder.token_count(assistant_response)
+            
+            # Add complete assistant message to session
+            session_data["messages"].append({
+                "role": "assistant", 
+                "content": assistant_response, 
+                "token_count": output_token_count
+            })
+            
+            # Calculate total tokens
+            total_tokens = sum(msg.get("token_count", 0) for msg in session_data["messages"])
+            
+            # Save session
+            SessionManager.save_session(session_id, session_data)
+            
+            # Send completion message
+            yield f"data: {json.dumps({'type': 'complete', 'total_tokens': str(total_tokens), 'all_messages': session_data['messages']})}\n\n"
+        
+        return Response(
+            generate(), 
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',
+                'Connection': 'keep-alive'
+            }
+        )
     
-    # Calculate token count
-    output_token_count = coder.token_count(assistant_response)
+    else:
+        # Non-streaming response (original behavior)
+        response = coder.chat(user_message, file_contents=session_data["files"])
+        assistant_response = f"{response}"
+        
+        # Calculate token count
+        output_token_count = coder.token_count(assistant_response)
 
-    session_data["messages"].append({"role": "assistant", "content": assistant_response, "token_count": output_token_count})
-    
-    SessionManager.save_session(session_id, session_data)
+        session_data["messages"].append({"role": "assistant", "content": assistant_response, "token_count": output_token_count})
+        
+        SessionManager.save_session(session_id, session_data)
 
-    #calculate total tokens
-    total_tokens = 0
-    for msg in session_data["messages"]:
-        if "token_count" in msg:
-            total_tokens += msg["token_count"]
-    print(f"Total tokens in session {session_id}: {total_tokens}")
+        #calculate total tokens
+        total_tokens = sum(msg.get("token_count", 0) for msg in session_data["messages"])
+        print(f"Total tokens in session {session_id}: {total_tokens}")
 
-    return jsonify({
-        "message": session_data["messages"][-1],
-        "all_messages": session_data["messages"],
-        "total_tokens": str(total_tokens)
-    })
+        return jsonify({
+            "message": session_data["messages"][-1],
+            "all_messages": session_data["messages"],
+            "total_tokens": str(total_tokens)
+        })
 
 
 @app.route('/api/sessions/<session_id>/messages/<int:message_index>', methods=['PUT'])
