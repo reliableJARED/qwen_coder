@@ -36,9 +36,11 @@ class SimpleQwen:
                                                           local_files_only=self.local_files_only)
         self.model.eval()
         self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant.When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"}]
+        #self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant"}]
+
         self.tools = {}
         self.available_tools = []
-        self.streaming_tool_break_flag = "BREAK_HERE_TOOLS_WERE_USED"
+        self.streaming_tool_break_flag = " BREAK_HERE_TOOLS_WERE_USED "
         first_param_dtype = next(self.model.parameters()).dtype
         logging.debug(f"The model's data type is: {first_param_dtype}")
         self.model.eval()
@@ -51,23 +53,25 @@ class SimpleQwen:
         except (socket.timeout, socket.error, OSError):
             return False
 
-    def register_tool(self, func: Callable, name: str = None, description: str = None):
+    def register_tool(self, func: Callable, name: str = None, description: str = None, parameters: Dict = None):
         """Register a tool function."""
         if name is None:
             name = func.__name__
         
         self.tools[name] = func
-        
+        if parameters is None:
+            parameters = {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            
         tool_def = {
             "type": "function",
             "function": {
                 "name": name,
                 "description": description or func.__doc__ or f"Function {name}",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
+                "parameters": parameters
             }
         }
         
@@ -732,6 +736,7 @@ class SimpleQwen:
 # Example usage
 if __name__ == "__main__":
     import time
+    from search import WebSearch
     
     os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
@@ -739,8 +744,19 @@ if __name__ == "__main__":
     
     def get_weather(args):
         """Get weather information for a location."""
+        logging.debug(f"GET WEATHER: {args}")
         location = args.get("location", "unknown")
-        return f"The weather in Boston is sunny and 75°F"
+        return f"The weather in {location} is sunny and 75°F"
+    
+    def internet_search(args):
+        """Run an internet search."""
+        #TODO: 
+        #place in a separate GLI process because it will be a lot for the card already running qwen
+        ws = WebSearch()
+        logging.debug(f"SEARCH: {args}")
+        query = args.get("query", "unknown")
+        summary = ws.askInternet(query)
+        return f"WEB SEARCH RESULTS: {summary}"
     
     def get_movies(args):
         """Get movies information for a location."""
@@ -750,6 +766,14 @@ if __name__ == "__main__":
     
     chat.register_tool(get_weather, description="Get current weather for a location")
     chat.register_tool(get_movies, description="Get current movies playing in a location")
+    pdemo = { "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "search query for internet"}
+                    },
+                    "required": ["query"]
+                }
+      
+    chat.register_tool(internet_search, description="Search the internet and get results to query",parameters=pdemo)
     
     logging.debug("Chat started! Type 'quit' or 'exit' to end.")
     logging.debug("Type 'stream' to toggle streaming mode.\n")

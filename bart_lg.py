@@ -12,7 +12,7 @@ MAX_RESPONSE_TOKENS = 500
 OVERLAP_SIZE = 125  # Number of tokens to overlap between chunks
 MIN_SIMILARITY_REJECTION = 0.5 #when doing a similarity based return, below this is not even included in pool for ranking
 TOP_k_RATIO = 0.75 #percential threshold
-class Summarizer:
+class TextSummarizer:
     #The bart-large-cnn model is a fine-tuned version of the BART (large-sized) model, 
     # which was specifically trained on the CNN/Daily Mail dataset. 
     # This model is designed for abstractive text summarization tasks,
@@ -172,7 +172,7 @@ class Summarizer:
 
 # Example usage:
 if __name__ == "__main__":
-    summarizer = Summarizer()
+    summarizer = TextSummarizer()
     test_string = """The myths given in this paper are part of a large body of material
 collected among the Cherokee, chiefly in successive field seasons
 from 1887 to 1890, inclusive, and comprising more or less extensive
