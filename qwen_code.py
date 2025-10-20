@@ -38,7 +38,7 @@ class SimpleQwen:
         self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant.When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"}]
         self.tools = {}
         self.available_tools = []
-
+        self.streaming_tool_break_flag = "BREAK_HERE_TOOLS_WERE_USED"
         first_param_dtype = next(self.model.parameters()).dtype
         logging.debug(f"The model's data type is: {first_param_dtype}")
         self.model.eval()
@@ -251,6 +251,33 @@ class SimpleQwen:
                 except json.JSONDecodeError as e:
                     logging.debug(f"Error parsing standalone JSON: {e}")
                     continue
+
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 6: <xml> wrapper with <toolCall> containing nested <name> and <arguments>
+            # Matches: <xml><toolCall><name>get_weather</name><arguments>{"location": "boston"}</arguments></toolCall></xml>
+            xml_toolcall_pattern = r'<xml>\s*<toolCall>\s*<name>([^<]+)</name>\s*<arguments>([^<]+)</arguments>\s*</toolCall>\s*</xml>'
+            for match in re.finditer(xml_toolcall_pattern, content, re.DOTALL | re.IGNORECASE):
+                function_name = match.group(1).strip()
+                arguments_str = match.group(2).strip()
+                
+                try:
+                    # Parse the arguments JSON
+                    arguments = json.loads(arguments_str)
+                    logging.debug(f"Tool Call (XML wrapper with toolCall): {function_name} with args {arguments}")
+                    
+                    tool_calls.append({
+                        "id": self._generate_tool_call_id(),
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": arguments
+                        }
+                    })
+                except json.JSONDecodeError as e:
+                    logging.error(f"Error parsing XML toolCall arguments: {e}")
+                    continue
+
 
         if tool_calls:
             
@@ -644,7 +671,7 @@ class SimpleQwen:
         while iteration < max_tool_iterations:
             iteration += 1
             if tools_were_used:
-                yield "BREAK_HERE_TOOLS_WERE_USED"
+                yield self.streaming_tool_break_flag
                 
             logging.debug(f"[Iteration {iteration}]")
             # Apply chat template with tools

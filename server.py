@@ -35,11 +35,19 @@ active_sessions: Dict[str, Any] = {}
 # Initialize chat
 coder = None
 
+############## Model Functions
+def get_weather(args):
+        """Get weather information for a location."""
+        location = args.get("location", "unknown")
+        return f"The weather in Boston is sunny and 75°F"
+##############################
 # Inject the initialized coder into the global namespace for routes to use
 def initialize_coder():
     global coder
+    
     # Initialize chat - This now only runs in the main process!
-    coder = SimpleQwen() 
+    coder = SimpleQwen()
+    coder.register_tool(get_weather, description="Get current weather for a location") 
 
 class SessionManager:
     """Manages chat sessions including messages and uploaded files."""
@@ -210,6 +218,9 @@ def send_message(session_id):
             # Stream tokens from the model
             for token in coder.chat_streaming(user_message, file_contents=session_data["files"]):
                 assistant_response += token
+                if token == coder.streaming_tool_break_flag:
+                    #reset, prior tokens were related to a tool call
+                    assistant_response = ""
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
             
             # Calculate final token count

@@ -10,7 +10,7 @@ from bart_lg import Summarizer
 
 
 # Define your search query
-query = "2025 massachusetts are there ballot questions"
+query = "how is taylor swifts new album doing"
 dd = DDGS()
 
 # Perform the search
