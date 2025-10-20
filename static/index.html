@@ -757,7 +757,7 @@
             const [editingContent, setEditingContent] = useState('');
             const [useStreaming, setUseStreaming] = useState(true);
             const [streamingContent, setStreamingContent] = useState('');
-            
+            const streamingToolBreakFlag = useRef("");
             const getAuthHeaders = () => {
                 const token = document.cookie
                     .split('; ')
@@ -781,6 +781,8 @@
                     })
                     const data = await response.json();
                     setSessions(data.sessions);
+                    console.log(data.streaming_tool_break_flag)
+                    streamingToolBreakFlag.current = data.streaming_tool_break_flag;
                 } catch (error) {
                     console.error('Error loading sessions:', error);
                 }
@@ -917,7 +919,12 @@
                                                     messagesUpdated = true;
                                                 } else if (data.type === 'token') {
                                                     // Accumulate token
-                                                    accumulatedContent += data.content;
+                                                    if (data.content === streamingToolBreakFlag.current){
+                                                        console.log("CLEAR - tool used")
+                                                        accumulatedContent = '...wait, using external tools';//When using tools the raw output from the model is in response, clear that     
+
+                                                    }else{accumulatedContent += data.content;}
+                                                    
                                                     
                                                     // Update the streaming message in real-time
                                                     setMessages(prev => {
@@ -931,7 +938,10 @@
                                                         }
                                                         return updated;
                                                     });
-                                                } else if (data.type === 'complete') {
+                                                } 
+                                                else if (data.type === 'complete') {
+                                                    console.log("FINAL MSG")
+                                                    setLoading(false);
                                                     // Final update with complete data
                                                     setMessages(data.all_messages);
                                                     setTokenCount(data.total_tokens);

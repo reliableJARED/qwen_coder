@@ -36,18 +36,38 @@ active_sessions: Dict[str, Any] = {}
 coder = None
 
 ############## Model Functions
-def get_weather(args):
-        """Get weather information for a location."""
-        location = args.get("location", "unknown")
-        return f"The weather in Boston is sunny and 75°F"
+def internet_search(args,return_instructions=False):
+        from search import WebSearch
+        """Run an internet search."""
+        #Function DNA
+        # D what does this function do
+        d = "Search the internet and get results to query"
+
+        # N what is the name of this function
+        n = internet_search.__name__
+
+        # A is the list of arguments, and their details, to the function
+        #Each argument instruction is a dict and needs to have a name, type, description and if it's a required argument
+        # a = None if the function doesn't take an argument
+        a = [{"name":"query","type":"string","description":"search query for internet","required":True}]
+
+        # Instructions for model how to use the function    
+        if return_instructions:
+          return d,n,a
+        
+        ws = WebSearch()
+        logging.debug(f"SEARCH: {args}")
+        query = args.get("query", "unknown")
+        summary = ws.askInternet(query)
+        return f"WEB SEARCH RESULTS: {summary}"
 ##############################
 # Inject the initialized coder into the global namespace for routes to use
 def initialize_coder():
     global coder
     
-    # Initialize chat - This now only runs in the main process!
+    # Initialize chat - This now only runs in the main process! Had issues on Windows prior
     coder = SimpleQwen()
-    coder.register_tool(get_weather, description="Get current weather for a location") 
+    coder.register_tool(internet_search) 
 
 class SessionManager:
     """Manages chat sessions including messages and uploaded files."""
@@ -137,13 +157,15 @@ class SessionManager:
 @app.route('/api/sessions', methods=['GET'])
 def get_sessions():
     """Get list of all chat sessions."""
+    global coder
     sessions = SessionManager.list_sessions()
-    return jsonify({"sessions": sessions})
+    return jsonify({"sessions": sessions, 'streaming_tool_break_flag':coder.streaming_tool_break_flag})
 
 
 @app.route('/api/sessions', methods=['POST'])
 def create_session():
     """Create a new chat session."""
+    
     session_id = SessionManager.create_session()
     return jsonify({"session_id": session_id})
 
@@ -181,11 +203,10 @@ def update_system_prompt(session_id):
         return jsonify({"error": "Session not found"}), 404
     
     # Update system message (always first message)
-    session_data["messages"][0] = {"role": "system", "content": system_prompt}
+    sp = coder.update_system_prompt(system_prompt)#If there are tools this will add special system prompt for tool use
+    session_data["messages"][0] = {"role": "system", "content": sp}
     SessionManager.save_session(session_id, session_data)
 
-    coder.messages[0] = {"role": "system", "content": system_prompt}
-    
     return jsonify({"success": True})
 
 
@@ -221,6 +242,8 @@ def send_message(session_id):
                 if token == coder.streaming_tool_break_flag:
                     #reset, prior tokens were related to a tool call
                     assistant_response = ""
+                    yield f"data: {json.dumps({'type': 'token', 'content': coder.streaming_tool_break_flag})}\n\n"
+                #else keep streaming normal tokens
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
             
             # Calculate final token count
@@ -390,8 +413,16 @@ def serve_index():
     """
     print(request.cookies)
     print(request.headers)
+    if os.getenv("NGROK_AUTHTOKEN"):
+        # Access the custom headers added in traffic policy, and default X-Forwarded-For which is ip
+        user_email = request.headers.get('X-User-Email')
+        user_name = request.headers.get('X-User-Name')
+        user_name = request.headers.get('X-User-Id')
+        ip = request.headers.get('X-Forwarded-For')
+        print(f"Authenticated user: {user_email} ({user_name}) -IP: {ip}")
     response = send_from_directory('static', 'index.html')
     print(f"Setting API Token: {QWEN_CODER_API_KEY}")
+    #TODO: right now sessions are all mixed. Make them based on the user
     response.set_cookie('qcode_api_token', QWEN_CODER_API_KEY, httponly=False, samesite='Strict')
     return response
 
@@ -421,11 +452,10 @@ def setup_ngrok():
     allowed_emails = json.loads(allowed_emails_str)
     allowed_emails_expr = ",".join([f"'{email}'" for email in allowed_emails])
     print(QWEN_CODER_API_KEY)
-    # Create traffic policy for OAuth protection
-    # Create traffic policy that:
+    # Create traffic policy for server protection
     # 1. Allows /api/* requests with valid Bearer token
     # 2. Allows /qcode (root) requests after OAuth email validation
-    # 3. All other requests require appropriate auth
+    # All requests via ngrok will require appropriate auth
 
     traffic_policy = {
         "on_http_request": [
@@ -458,6 +488,26 @@ def setup_ngrok():
                         "type": "oauth",
                         "config": {
                             "provider": "google"
+                        }
+                    }
+                ]
+            },
+            # Add OAuth identity as headers for easier access in Flask
+            #resource help on https://ngrok.com/docs/traffic-policy/actions/oauth
+            {
+                "name": "Add OAuth identity headers",
+                "expressions": [
+                    "req.url.path == '/qcode' || req.url.path.startsWith('/static/')"
+                ],
+                "actions": [
+                    {
+                        "type": "add-headers",
+                        "config": {
+                            "headers": {
+                                "X-User-Email": "${actions.ngrok.oauth.identity.email}",
+                                "X-User-Name": "${actions.ngrok.oauth.identity.name}",
+                                "X-User-Id": "${actions.ngrok.oauth.identity.provider_user_id}"
+                            }
                         }
                     }
                 ]
@@ -514,7 +564,8 @@ if __name__ == '__main__':
     
     # Setup ngrok tunnel (optional - can be disabled by commenting out)
     if os.getenv("NGROK_AUTHTOKEN"):
-        setup_ngrok()
+        print("NGROK_AUTHTOKEN found - running ngrok tunnel")
+        _= setup_ngrok()
     else:
         print("No NGROK_AUTHTOKEN found - running without ngrok tunnel")
     

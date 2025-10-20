@@ -3,11 +3,12 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import socket
 import re
+import gc
 from mxbai_txt_embed import MxBaiEmbedder
 import logging
 logging.basicConfig(level=logging.INFO)
 
-MAX_CHUNK_TOKENS = 950
+MAX_CHUNK_TOKENS = 950 #model max is 1024 input
 MAX_RESPONSE_TOKENS = 500
 OVERLAP_SIZE = 125  # Number of tokens to overlap between chunks
 MIN_SIMILARITY_REJECTION = 0.5 #when doing a similarity based return, below this is not even included in pool for ranking
@@ -17,15 +18,16 @@ class TextSummarizer:
     # which was specifically trained on the CNN/Daily Mail dataset. 
     # This model is designed for abstractive text summarization tasks,
     # *** cnn *** is not convelutional neural network, but rather a reference to the fine tuning dataset consisting of news articles and their corresponding summaries.
-    def __init__(self, model_name="facebook/bart-large-cnn"):
+    def __init__(self, model_name="facebook/bart-large-cnn",keep_loaded_in_memory=False):
         self.model_name = model_name
         self.local_files_only = self.check_internet()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=self.local_files_only)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name, local_files_only=self.local_files_only)
-        self.model = self.model.to(self.device)
-        self.model.eval()
+        #Set to None because assignment is dynamic based on the keep_loaded_in_memory option.
+        self.device = None
+        self.tokenizer = None
+        self.model = None
+        self.keep_loaded_in_memory = keep_loaded_in_memory
         self.embedder = MxBaiEmbedder() # Initialize the embedder
+
 
     def check_internet(self):
         """Check if internet connection is available."""
@@ -36,8 +38,63 @@ class TextSummarizer:
         except (socket.timeout, socket.error, OSError):
             #no internet, so we DO want local files only
             return True
+        
+    def _load_model(self):
+        self.device = torch.device(self.use_gpu_with_most_memory())
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=self.local_files_only)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name, local_files_only=self.local_files_only)
+        self.model = self.model.to(self.device)
+        self.model.eval()
 
-
+    def _unload_model(self):
+        """Removes the model and clears memory caches."""
+        if self.model is not None:
+            print(f"Unloading model '{self.model_name}' and clearing memory...")
+            
+            # Move the model to CPU and delete it
+            self.model.to("cpu")
+            del self.model
+            
+            # Delete tokenizer
+            del self.tokenizer
+            
+            # Reset attributes to None
+            self.model = None
+            self.tokenizer = None
+            
+            # Force garbage collection
+            gc.collect()
+            
+            # Clear PyTorch device cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            elif torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            
+            print("Model unloaded and memory caches cleared.")
+    
+    def use_gpu_with_most_memory(self):
+        """To help prevent OOM errors when using cuda, find device with most space"""
+        #check for CUDA
+        if not torch.cuda.is_available():
+            #check for MPS
+            if torch.backends.mps.is_available():
+                return "mps"
+            else:
+                return "cpu"
+        
+        devices = torch.cuda.device_count()
+        max_memory = -1
+        best_device = None
+        #Using CUDA, if multiple devices use the one with most mem availible.
+        for i in range(devices):
+            memory = torch.cuda.memory_allocated(i)
+            if memory > max_memory:
+                max_memory = memory
+                best_device = i
+        
+        return f"cuda:{best_device}"
+    
     def clean_text_for_bart_cnn(self,text):
         """
         Cleans text, keeping only English alphanumeric characters, standard 
@@ -66,7 +123,7 @@ class TextSummarizer:
         
         return cleaned_text
 
-    def generate_summary(self, chunk):
+    def _generate_summary(self, chunk):
         #clean chunk
         clean_chunk = self.clean_text_for_bart_cnn(chunk)
         #Feed the raw text chunk to the model, no extra prompt needed for BART
@@ -78,14 +135,14 @@ class TextSummarizer:
             outputs = self.model.generate(inputs['input_ids'], max_length=MAX_RESPONSE_TOKENS, num_return_sequences=1)
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    def split_into_token_chunks(self, text, chunk_size=MAX_CHUNK_TOKENS, overlap_size=OVERLAP_SIZE):
+    def _split_into_token_chunks(self, text, chunk_size=MAX_CHUNK_TOKENS, overlap_size=OVERLAP_SIZE):
         """
         Splits text into chunks based on exact token count (IDs), Not splitting on words or characters,
         ensuring compliance with the model's context limit.
         """
         # 1. Encode the entire text into token IDs
         # We use add_special_tokens=False because the generation step 
-        # (in generate_summary) will add <s> and </s> automatically.
+        # (in _generate_summary) will add <s> and </s> automatically.
         token_ids = self.tokenizer.encode(text, add_special_tokens=False)
         
         total_length = len(token_ids)
@@ -119,16 +176,19 @@ class TextSummarizer:
         return chunks
     
     def summarize_text(self, text, query_match=False, top_k_ratio=TOP_k_RATIO):
-        chunks = self.split_into_token_chunks(text)
-        logging.debug(f"Total chunks created: {len(chunks)}")
+        if not self.keep_loaded_in_memory or self.model is None:
+            self._load_model()
 
+        chunks = self._split_into_token_chunks(text)
+        logging.debug(f"Total chunks created: {len(chunks)}")
+        final_response =""
         if query_match:
             # Collect ALL summaries with their similarity scores
             summary_scores = []
             
             for i, chunk in enumerate(chunks):
                 logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
-                summary = self.generate_summary(chunk)
+                summary = self._generate_summary(chunk)
                 similarity = self.embedder.compare_strings(summary, query_match)
                 
                 # Only include summaries with similarity above minimum threshold
@@ -153,22 +213,25 @@ class TextSummarizer:
 
                 final_response = ' '.join(summaries)
                 logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
-                return final_response
+                
             else:
-                #no similar content found
-                return ""
+                logging.info(f"\n\nFinal summarized response generated NO SIMILAR text: {final_response}\n\n")
 
         else:
             # No query matching, keep all summaries
             summaries = []
             for i, chunk in enumerate(chunks):
                 logging.debug(f"Generating summary for chunk {i+1}/{len(chunks)}")
-                summary = self.generate_summary(chunk)
+                summary = self._generate_summary(chunk)
                 summaries.append(summary)
 
             final_response = ' '.join(summaries)
             logging.info(f"\n\nFinal summarized response generated: {final_response}\n\n")
-            return final_response
+        
+        if not self.keep_loaded_in_memory:
+            self._unload_model()
+
+        return final_response
 
 # Example usage:
 if __name__ == "__main__":
@@ -190,5 +253,6 @@ specimens selected from a body of about six hundred ritual formulas
 written down in the Cherokee language and alphabet by former doctors
 of the tribe and constituting altogether the largest body of aboriginal
 American literature in existence.
-"""  # A long string for testing
+""" 
+    # A long string for testing
     summarizer.summarize_text(test_string)

@@ -27,18 +27,22 @@ class SimpleQwen:
     def __init__(self, model_name="Qwen/Qwen2.5-Coder-7B-Instruct"):
         self.model_name = model_name
         self.local_files_only = self.check_internet()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(self.use_gpu_with_most_memory())
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, 
                                                        local_files_only=self.local_files_only)
+        
+        #Note about device. using dtype .bfloat16 it will load about 14GB in ram. this leaves almost NO room for inference On the RTX 5060 16gb
+        # Therefore I use 'auto' since it will split on the two cards. 
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name,
-                                                          dtype="auto",
-                                                          device_map="auto", 
+                                                          dtype="auto",# use torch.float16 to force smaller, or even .float8
+                                                          device_map="auto",
+                                                          #device_map=self.device,  
                                                           local_files_only=self.local_files_only)
+        
         self.model.eval()
-        self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant.When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"}]
-        #self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant"}]
-
+        self.messages = [{"role": "system", "content": "You are a helpful developer coding assistant."}]
         self.tools = {}
+        self.prompt_for_tool_use = "\n\nREMEMBER - you have tools you can use to assist answering a user input. When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"
         self.available_tools = []
         self.streaming_tool_break_flag = " BREAK_HERE_TOOLS_WERE_USED "
         first_param_dtype = next(self.model.parameters()).dtype
@@ -53,28 +57,45 @@ class SimpleQwen:
         except (socket.timeout, socket.error, OSError):
             return False
 
-    def register_tool(self, func: Callable, name: str = None, description: str = None, parameters: Dict = None):
-        """Register a tool function."""
-        if name is None:
-            name = func.__name__
+    def update_system_prompt(self, new_sys_prompt:str):
+        """Update the system prompt"""
+        #Check if we have tools
+        
+        if len(self.available_tools) > 0:
+            self.messages[0] = {"role": "system", "content": new_sys_prompt+self.prompt_for_tool_use}
+            return new_sys_prompt+self.prompt_for_tool_use
+        else:
+            self.messages[0] = {"role": "system", "content": new_sys_prompt}
+            return new_sys_prompt
+        
+    
+    def register_tool(self, func: Callable):
+        """Register a tool function using D,N,A"""
+        description,name,attributes = func(None,return_instructions=True)#this will get the D,N,A of the function to tell LLM how to use
         
         self.tools[name] = func
-        if parameters is None:
-            parameters = {
+        if attributes is None:
+            #a LLM tool that takes no arguments
+            attributes = {
                     "type": "object",
                     "properties": {},
                     "required": []
-                }
-            
+                }    
         tool_def = {
             "type": "function",
             "function": {
                 "name": name,
-                "description": description or func.__doc__ or f"Function {name}",
-                "parameters": parameters
+                "description": description,
+                "parameters": attributes
             }
         }
+        #if this is our first tool, adjust the system prompt
+        if len(self.available_tools) == 0:
+            #get current prompt
+            sp = self.messages[0]['content']
+            self.messages[0] = {"role": "system", "content": sp+"\n\nREMEMBER - you have tools you can use to assist answering a user input. When calling tools, always use this exact format: <tool_call>{'name': '...', 'arguments': {...}}</tool_call>"}
         
+        #ensures that before adding the new tool to self.available_tools, any with same name are removed.
         self.available_tools = [t for t in self.available_tools if t["function"]["name"] != name]
         self.available_tools.append(tool_def)
     
@@ -282,6 +303,58 @@ class SimpleQwen:
                     logging.error(f"Error parsing XML toolCall arguments: {e}")
                     continue
 
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 7: Self-closing <function> tag with name and arguments attributes
+            # Matches: <function name="internet_search" arguments='{"query": "new jokes"}'/>
+            xml_function_pattern = r'<function\s+name=["\']([^"\']+)["\']\s+arguments=["\'](.+?)["\']\s*/>'
+            for match in re.finditer(xml_function_pattern, content, re.IGNORECASE | re.DOTALL):
+                function_name = match.group(1)
+                arguments_str = match.group(2)
+                
+                try:
+                    # Parse the arguments JSON
+                    arguments = json.loads(arguments_str)
+                    logging.debug(f"Tool Call (self-closing function tag): {function_name} with args {arguments}")
+                    
+                    tool_calls.append({
+                        "id": self._generate_tool_call_id(),
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": arguments
+                        }
+                    })
+                except json.JSONDecodeError as e:
+                    logging.debug(f"Error parsing self-closing function tag arguments: {e}")
+                    continue
+
+        #If we found tools already don't run:
+        if not tool_calls:    
+            # Pattern 8: <response> wrapper with self-closing <function> tag
+            # Matches: <response>\n  <function name="internet_search" arguments='{"query": "new jokes"}'/>\n</response>
+            response_function_pattern = r'<response>\s*<function\s+name=["\']([^"\']+)["\']\s+arguments=["\'](\{[^\'\"]+\})["\']\s*/>\s*</response>'
+            for match in re.finditer(response_function_pattern, content, re.DOTALL | re.IGNORECASE):
+                function_name = match.group(1)
+                arguments_str = match.group(2)
+                
+                try:
+                    # Parse the arguments JSON
+                    arguments = json.loads(arguments_str)
+                    logging.debug(f"Tool Call (response wrapper with function tag): {function_name} with args {arguments}")
+                    
+                    tool_calls.append({
+                        "id": self._generate_tool_call_id(),
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": arguments
+                        }
+                    })
+                except json.JSONDecodeError as e:
+                    logging.debug(f"Error parsing response-wrapped function tag arguments: {e}")
+                    continue
+
 
         if tool_calls:
             
@@ -300,7 +373,7 @@ class SimpleQwen:
                 "role": "assistant",
                 "content": content.strip()
             }
-    
+        
     def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
         """Execute tool calls and return results."""
         tool_results = []
@@ -556,6 +629,27 @@ class SimpleQwen:
             return match.group(1).strip()
         return text.strip()
 
+    def use_gpu_with_most_memory(self):
+        #check for CUDA
+        if not torch.cuda.is_available():
+            #check for MPS
+            if torch.backends.mps.is_available():
+                return "mps"
+            else:
+                return "cpu"
+        
+        devices = torch.cuda.device_count()
+        max_memory = -1
+        best_device = None
+        #Using CUDA, if multiple devices use the one with most mem availible.
+        for i in range(devices):
+            memory = torch.cuda.memory_allocated(i)
+            if memory > max_memory:
+                max_memory = memory
+                best_device = i
+        
+        return f"cuda:{best_device}"
+
     def chat(self, user_input: str, file_contents: list = None, max_tool_iterations: int = 5) -> str:
         """
         Generate response with recursive tool support.
@@ -671,11 +765,9 @@ class SimpleQwen:
                 })
         
         iteration = 0
-        tools_were_used = False
+
         while iteration < max_tool_iterations:
             iteration += 1
-            if tools_were_used:
-                yield self.streaming_tool_break_flag
                 
             logging.debug(f"[Iteration {iteration}]")
             # Apply chat template with tools
@@ -703,7 +795,9 @@ class SimpleQwen:
             parsed_response = self._parse_tool_calls(full_response)
             # Check if model wants to use tools
             if parsed_response.get("tool_calls",False):
-                tools_were_used = True
+                #clear the msg
+                yield self.streaming_tool_break_flag
+                
                 tool_calls = parsed_response.get("tool_calls")
                 #Format the messages for the fact model called tools
                 tool_calls_format =  parsed_response.get("content","")
@@ -738,7 +832,7 @@ if __name__ == "__main__":
     import time
     from search import WebSearch
     
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    #os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
     chat = SimpleQwen(model_name="Qwen/Qwen2.5-Coder-7B-Instruct")
     
@@ -748,10 +842,27 @@ if __name__ == "__main__":
         location = args.get("location", "unknown")
         return f"The weather in {location} is sunny and 75°F"
     
-    def internet_search(args):
+    def internet_search(args,return_instructions=False):
         """Run an internet search."""
-        #TODO: 
-        #place in a separate GLI process because it will be a lot for the card already running qwen
+        #Function DNA
+        # D what does this function do
+        d = "Search the internet and get results to query"
+
+        # N what is the name of this function
+        n = internet_search.__name__
+
+        # A what are the arguments to the function
+        #each argument instruction is a dict and needs to have a name, type, description and if it's a required argument
+        a = [{"name":"query","type":"string","description":"search query for internet","required":True}]
+
+        # Instructions for model how to use the function    
+        if return_instructions:
+          print("FUNCTION DNA CALLED:")
+          print("\n",d)
+          print("\n",n)
+          print("\n",a)
+          return d,n,a
+        
         ws = WebSearch()
         logging.debug(f"SEARCH: {args}")
         query = args.get("query", "unknown")
@@ -764,8 +875,8 @@ if __name__ == "__main__":
         logging.debug(f"GET MOVIES: {args}")
         return f"The movies playing in Boston are Back To The Future 2 at 8pm"
     
-    chat.register_tool(get_weather, description="Get current weather for a location")
-    chat.register_tool(get_movies, description="Get current movies playing in a location")
+    #chat.register_tool(get_weather, description="Get current weather for a location")
+    #chat.register_tool(get_movies, description="Get current movies playing in a location")
     pdemo = { "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "search query for internet"}
@@ -773,7 +884,8 @@ if __name__ == "__main__":
                     "required": ["query"]
                 }
       
-    chat.register_tool(internet_search, description="Search the internet and get results to query",parameters=pdemo)
+    #chat.register_tool(internet_search, description="Search the internet and get results to query",parameters=pdemo)
+    chat.register_tool(internet_search)
     
     logging.debug("Chat started! Type 'quit' or 'exit' to end.")
     logging.debug("Type 'stream' to toggle streaming mode.\n")
