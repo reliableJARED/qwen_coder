@@ -75,7 +75,8 @@ class kokoroTTS:
         self.sd = sd
         
         
-        # Voice definitions
+        # Voice definitions reference
+        #https://github.com/hexgrad/kokoro/tree/main/kokoro.js/voices
         VOICES_FEMALE: list[str] = [
             "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica", 
             "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky"
@@ -86,8 +87,8 @@ class kokoroTTS:
             "am_michael", "am_onyx", "am_puck", "am_santa"
         ]
 
-        self.accent: str = 'a'  # 'a' for American English
-        self.voice: str = 'af_sky'  # Default
+        self.lang_code: str = 'a'  # 'a' for American English
+        self.voice: str = 'af_sky,af_jessica'#  Single voice can be requested (e.g. 'af_sky') or multiple voices (e.g. 'af_bella,af_jessica'). If multiple voices are requested, they are averaged.
         self.speech_speed: float = 1.0  # Normal speed
 
         self.pipeline = None
@@ -118,13 +119,15 @@ class kokoroTTS:
             return False
 
     def _initialize_pipeline(self) -> None:
-        """Initialize the Kokoro pipeline with MPS fallback for Mac."""
+        """Initialize the Kokoro pipeline with MPS fallback for Mac.
+        https://github.com/hexgrad/kokoro/blob/main/kokoro/pipeline.py
+        """
         try:
             # Set MPS fallback for Mac M1/M2/M3/M4
             if platform.system() == "Darwin" and self.torch.backends.mps.is_available():
                 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
             
-            self.pipeline = self.KPipeline(self.accent, repo_id='hexgrad/Kokoro-82M')
+            self.pipeline = self.KPipeline(self.lang_code, repo_id='hexgrad/Kokoro-82M')
             print("Kokoro pipeline initialized successfully")
         except Exception as e:
             print(f"Failed to initialize Kokoro pipeline: {e}")
