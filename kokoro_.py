@@ -187,11 +187,6 @@ class kokoroTTS:
         else:
             print("TTS system shutdown complete")
 
-    def __del__(self):
-        """Cleanup when object is destroyed - not reliable, use shutdown() instead."""
-        if hasattr(self, 'shutdown_event') and not self.shutdown_event.is_set():
-            self.shutdown_event.set()
-
 
 if __name__ == "__main__":
     import signal
