@@ -34,7 +34,7 @@ class SimpleQwen:
         #Note about device. using dtype .bfloat16 it will load about 14GB in ram. this leaves almost NO room for inference On the RTX 5060 16gb
         # Therefore I use 'auto' since it will split on the two cards. 
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name,
-                                                          dtype="auto",# use torch.float16 to force smaller, or even .float8
+                                                          dtype="auto",# "auto" by default, use torch.float16 to force smaller, or even .float8
                                                           device_map="auto",
                                                           #device_map=self.device,  
                                                           local_files_only=self.local_files_only)
