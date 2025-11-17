@@ -11,3 +11,4 @@ beautifulsoup4==4.14.2
 scikit-learn==1.7.2
 kokoro==0.9.4
 PyPDF2
+playwright
