@@ -10,8 +10,10 @@ from datetime import datetime
 from qwen_code import SimpleQwen
 import logging
 import json
+import threading
 # Ngrok import is used for setting up the secure tunnel for remote access. Don't need if only local access.
 import ngrok
+from search import WebSearch
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -37,7 +39,6 @@ coder = None
 
 ############## Model Functions
 def internet_search(args,return_instructions=False):
-        from search import WebSearch
         """Run an internet search."""
         #Function DNA
         # D what does this function do
@@ -46,21 +47,45 @@ def internet_search(args,return_instructions=False):
         # N what is the name of this function
         n = internet_search.__name__
 
-        # A is the list of arguments, and their details, to the function
-        #Each argument instruction is a dict and needs to have a name, type, description and if it's a required argument
-        # a = None if the function doesn't take an argument
+        # A what are the arguments to the function
+        #each argument instruction is a dict and needs to have a name, type, description and if it's a required argument
         a = [{"name":"query","type":"string","description":"search query for internet","required":True}]
 
         # Instructions for model how to use the function    
         if return_instructions:
+          print("FUNCTION DNA CALLED:")
+          print("\n",d)
+          print("\n",n)
+          print("\n",a)
           return d,n,a
         
         ws = WebSearch()
         logging.debug(f"SEARCH: {args}")
         query = args.get("query", "unknown")
-        #summary = ws.askInternet(query)
-        summary = ws.askInternet_google(query)
-        return f"WEB SEARCH RESULTS: {summary}"
+
+        # Storage for results
+        results = {}
+
+        def search_regular():
+            results['summary'] = ws.askInternet(query)
+        
+        def search_google():
+            results['summary_g'] = ws.askInternet_google(query)
+
+        # Create and start threads
+        thread1 = threading.Thread(target=search_regular)
+        thread2 = threading.Thread(target=search_google)
+        
+        thread1.start()
+        thread2.start()
+        
+        # Wait for both to complete
+        thread1.join()
+        thread2.join()
+
+        return f"WEB SEARCH RESULTS: {results['summary']} {results['summary_g']}"
+
+
 ##############################
 # Inject the initialized coder into the global namespace for routes to use
 def initialize_coder():

@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Callable, Generator
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import logging
+import threading
 logging.basicConfig(level=logging.DEBUG)
 
 # also try limiting the cache size (e.g., to 512MB) to force more frequent returns to the OS.
@@ -887,6 +888,7 @@ if __name__ == "__main__":
         location = args.get("location", "unknown")
         return f"The weather in {location} is sunny and 75°F"
     
+    
     def internet_search(args,return_instructions=False):
         """Run an internet search."""
         #Function DNA
@@ -911,10 +913,29 @@ if __name__ == "__main__":
         ws = WebSearch()
         logging.debug(f"SEARCH: {args}")
         query = args.get("query", "unknown")
-        #summary = ws.askInternet(query)
-        summary = ws.askInternet_google(query)
-        return f"WEB SEARCH RESULTS: {summary}"
-    
+
+        # Storage for results
+        results = {}
+
+        def search_regular():
+            results['summary'] = ws.askInternet(query)
+        
+        def search_google():
+            results['summary_g'] = ws.askInternet_google(query)
+
+        # Create and start threads
+        thread1 = threading.Thread(target=search_regular)
+        thread2 = threading.Thread(target=search_google)
+        
+        thread1.start()
+        thread2.start()
+        
+        # Wait for both to complete
+        thread1.join()
+        thread2.join()
+
+        return f"WEB SEARCH RESULTS: {results['summary']} {results['summary_g']}"
+
     def get_movies(args):
         """Get movies information for a location."""
         location = args.get("location", "unknown")
