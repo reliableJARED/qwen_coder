@@ -58,7 +58,8 @@ def internet_search(args,return_instructions=False):
         ws = WebSearch()
         logging.debug(f"SEARCH: {args}")
         query = args.get("query", "unknown")
-        summary = ws.askInternet(query)
+        #summary = ws.askInternet(query)
+        summary = ws.askInternet_google(query)
         return f"WEB SEARCH RESULTS: {summary}"
 ##############################
 # Inject the initialized coder into the global namespace for routes to use
@@ -570,4 +571,4 @@ if __name__ == '__main__':
         print("No NGROK_AUTHTOKEN found - running without ngrok tunnel")
     
     # Run Flask app
-    app.run(debug=True, host='0.0.0.0', port=port, use_reloader=False)
+    app.run(debug=False, port=port, use_reloader=False)

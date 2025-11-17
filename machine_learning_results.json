@@ -1,0 +1,67 @@
+[
+  {
+    "title": "Machine learning",
+    "url": "https://en.wikipedia.org/wiki/Machine_learning",
+    "snippet": "Machine learning (ML) is a field of study in artificial intelligence concerned with the development and study of statistical algorithms that can learn from ..."
+  },
+  {
+    "title": "What is Machine Learning? | IBM",
+    "url": "https://www.ibm.com/think/topics/machine-learning",
+    "snippet": "Machine learning is the subset of AI focused on algorithms that analyze and “learn” the patterns of training data in order to make accurate inferences about ..."
+  },
+  {
+    "title": "A guide to the types of machine learning algorithms | SAS UK",
+    "url": "https://www.sas.com/en_gb/insights/articles/analytics/machine-learning-algorithms.html#:~:text=As%20new%20data%20is%20fed,%2Dsupervised%2C%20unsupervised%20and%20reinforcement.",
+    "snippet": ""
+  },
+  {
+    "title": "Machine Learning Crash Course",
+    "url": "https://developers.google.com/machine-learning/crash-course",
+    "snippet": "Google's fast-paced, practical introduction to machine learning, featuring a series of animated videos, interactive visualizations, and hands-on practice ..."
+  },
+  {
+    "title": "Machine Learning Tutorial",
+    "url": "https://www.geeksforgeeks.org/machine-learning/machine-learning/",
+    "snippet": "Aug 28, 2025 — Machine learning is a branch of Artificial Intelligence that focuses on developing models and algorithms that let computers learn from data ..."
+  },
+  {
+    "title": "Machine Learning Pros and Cons - Karpagam Institute of Technology",
+    "url": "https://karpagamtech.ac.in/advantages-disadvantages-of-machine-learning/",
+    "snippet": ""
+  },
+  {
+    "title": "30 Major Machine Learning Limitations, Challenges & Risks",
+    "url": "https://onix-systems.com/blog/limitations-of-machine-learning-algorithms",
+    "snippet": ""
+  },
+  {
+    "title": "Machine Learning (ML) on AWS - ML Models and Tools",
+    "url": "https://aws.amazon.com/ai/machine-learning/",
+    "snippet": ""
+  },
+  {
+    "title": "10 Top Machine Learning Algorithms & Their Use-Cases - DataCamp",
+    "url": "https://www.datacamp.com/blog/top-machine-learning-use-cases-and-algorithms",
+    "snippet": ""
+  },
+  {
+    "title": "Machine learning, explained",
+    "url": "https://mitsloan.mit.edu/ideas-made-to-matter/machine-learning-explained",
+    "snippet": "Apr 21, 2021 — Machine learning is a subfield of artificial intelligence that gives computers the ability to learn without explicitly being programmed. “In ..."
+  },
+  {
+    "title": "Machine Learning: What it is and why it matters | SAS",
+    "url": "https://www.sas.com/en_us/insights/analytics/machine-learning.html",
+    "snippet": "Machine learning is a subset of artificial intelligence that trains a machine how to learn. See how machine learning works and how it's being used today."
+  },
+  {
+    "title": "DOE Explains...Machine Learning",
+    "url": "https://www.energy.gov/science/doe-explainsmachine-learning",
+    "snippet": "Machine learning is the process of using computers to detect patterns in massive datasets and then make predictions based on what the computer learns from ..."
+  },
+  {
+    "title": "Supervised Machine Learning: Regression and Classification",
+    "url": "https://www.coursera.org/learn/machine-learning",
+    "snippet": "Build & train supervised machine learning models for prediction & binary classification tasks, including linear regression & logistic regression."
+  }
+]

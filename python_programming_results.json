@@ -1,0 +1,72 @@
+[
+  {
+    "title": "Welcome to Python.org",
+    "url": "https://www.python.org/",
+    "snippet": "The official home of the Python Programming Language."
+  },
+  {
+    "title": "Python (programming language)",
+    "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    "snippet": "Python is a high-level, general-purpose programming language. Its design philosophy emphasizes code readability with the use of significant indentation."
+  },
+  {
+    "title": "What Is Python Used For? A Beginner's Guide - Coursera",
+    "url": "https://www.coursera.org/articles/what-is-python-used-for-a-beginners-guide-to-using-python#:~:text=Python%20is%20commonly%20used%20for,everyday%20tasks%2C%20like%20organizing%20finances.",
+    "snippet": ""
+  },
+  {
+    "title": "How to Learn Python FREE in 8-Week: The 80/20 Learning Plan",
+    "url": "https://habr.com/en/articles/800289/#:~:text=The%2080%2F20%20principle%2C%20also,to%20be%20good%20at%20it.",
+    "snippet": ""
+  },
+  {
+    "title": "Which is better: Python or C++? - Quora",
+    "url": "https://www.quora.com/Which-is-better-Python-or-C++",
+    "snippet": ""
+  },
+  {
+    "title": "Introduction to Python",
+    "url": "https://www.w3schools.com/python/python_intro.asp",
+    "snippet": "Python is a popular programming language. It was created by Guido van Rossum, and released in 1991. It is used for:"
+  },
+  {
+    "title": "Top 6 Advantages of Python over Other Programming Languages",
+    "url": "https://www.invensis.net/blog/benefits-of-python-over-other-programming-languages",
+    "snippet": ""
+  },
+  {
+    "title": "Operators in Python: Everything You Need to Know - Simplilearn.com",
+    "url": "https://www.simplilearn.com/tutorials/python-tutorial/operators-in-python",
+    "snippet": ""
+  },
+  {
+    "title": "If-Else: 1. Illustrate The Different Types of Control Flow Statements ... - Scribd",
+    "url": "https://www.scribd.com/document/544532570/unit-2-long#:~:text=Python%20With%20Flowcharts-,The%20document%20discusses%206%20different%20types%20of%20flow%20control%20statements,syntax%20and%20a%20flowchart%20example.",
+    "snippet": ""
+  },
+  {
+    "title": "Python Built-in Functions - W3Schools",
+    "url": "https://www.w3schools.com/python/python_ref_functions.asp",
+    "snippet": ""
+  },
+  {
+    "title": "Python for Beginners",
+    "url": "https://learn.microsoft.com/en-us/shows/intro-to-python-development/",
+    "snippet": "Python for Beginners. English. Probably the largest hurdle when learning any new programming language is simply knowing where to get started ..."
+  },
+  {
+    "title": "Python Programming",
+    "url": "https://www.codio.com/resources/intro-python",
+    "snippet": "Interested in Python coding? Our courseware offers an introduction to Python programming, perfect for beginners. Start your coding journey today!"
+  },
+  {
+    "title": "Google's Python Class | Python Education",
+    "url": "https://developers.google.com/edu/python",
+    "snippet": "Jul 23, 2024 — Welcome to Google's Python Class -- this is a free class for people with a little bit of programming experience who want to learn Python."
+  },
+  {
+    "title": "What Is Python Used For? A Beginner's Guide",
+    "url": "https://www.coursera.org/articles/what-is-python-used-for-a-beginners-guide-to-using-python",
+    "snippet": "May 20, 2025 — Python is a computer programming language often used to build websites and software, automate tasks, and conduct data analysis."
+  }
+]

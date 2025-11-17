@@ -472,11 +472,10 @@ class SimpleQwen:
         generated_token_ids = []
         
         # Buffer for handling multi-byte characters (like emojis)
-        # We accumulate tokens here until they decode cleanly
         decode_buffer = []
-        last_output_length = 0  # Track how much text we've already yielded
+        last_output_length = 0
         
-        # Cache for efficient generation (stores attention key/value pairs)
+        # Cache for efficient generation
         past_key_values = None
         
         # Start with the input IDs
@@ -485,25 +484,27 @@ class SimpleQwen:
         
         start_time = time.time()
         
+        # Generation parameters with safe defaults
+        temperature = 0.7
+        top_p = 0.8
+        min_temperature = 0.1
+        max_temperature = 2.0
+        
         # Generate one token at a time
         with torch.no_grad():
             for step in range(max_new_tokens):
                 # Prepare inputs for this generation step
                 if past_key_values is None:
-                    # First step: use full input
                     current_input_ids = input_ids
                     current_attention_mask = attention_mask
                 else:
-                    # Subsequent steps: only use the last generated token
-                    # This is more efficient due to caching
                     current_input_ids = input_ids[:, -1:]
                     if attention_mask is not None:
-                        # Extend attention mask by one position
                         current_attention_mask = torch.cat([
                             attention_mask,
                             torch.ones((attention_mask.shape[0], 1), 
-                                     dtype=attention_mask.dtype, 
-                                     device=attention_mask.device)
+                                    dtype=attention_mask.dtype, 
+                                    device=attention_mask.device)
                         ], dim=1)
                     else:
                         current_attention_mask = None
@@ -513,31 +514,77 @@ class SimpleQwen:
                     input_ids=current_input_ids,
                     attention_mask=current_attention_mask,
                     past_key_values=past_key_values,
-                    use_cache=True  # Enable KV caching for speed
+                    use_cache=True
                 )
                 
                 # Get logits for the next token position
                 logits = outputs.logits[:, -1, :]
                 past_key_values = outputs.past_key_values
                 
-                # Apply temperature scaling
-                logits = logits / 0.7
-                
-                # Apply top-p (nucleus) sampling
-                sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-                cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-                
-                # Remove tokens with cumulative probability above threshold
-                sorted_indices_to_remove = cumulative_probs > 0.8
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
-                
-                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                logits[indices_to_remove] = float('-inf')
-                
-                # Sample the next token
-                probs = torch.softmax(logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
+                # === SAFE SAMPLING IMPLEMENTATION ===
+                try:
+                    # Clamp temperature to safe range
+                    safe_temp = max(min_temperature, min(temperature, max_temperature))
+                    
+                    # Apply temperature scaling
+                    logits = logits / safe_temp
+                    
+                    # Clamp logits to prevent overflow in softmax
+                    logits = torch.clamp(logits, min=-100, max=100)
+                    
+                    # Check for NaN or Inf in logits
+                    if torch.isnan(logits).any() or torch.isinf(logits).any():
+                        print(f"Warning: Invalid logits detected at step {step}, using greedy decoding")
+                        next_token = torch.argmax(logits, dim=-1, keepdim=True)
+                    else:
+                        # Apply top-p (nucleus) sampling with safety checks
+                        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                        
+                        # Subtract max for numerical stability before softmax
+                        sorted_logits = sorted_logits - sorted_logits.max(dim=-1, keepdim=True)[0]
+                        
+                        # Compute probabilities
+                        sorted_probs = torch.softmax(sorted_logits, dim=-1)
+                        cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+                        
+                        # Remove tokens with cumulative probability above threshold
+                        sorted_indices_to_remove = cumulative_probs > top_p
+                        # Shift the indices to keep at least one token
+                        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                        sorted_indices_to_remove[..., 0] = 0
+                        
+                        # Scatter back to original indexing
+                        indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                        
+                        # Instead of -inf, use a very negative value
+                        logits = logits.clone()  # Don't modify in-place
+                        logits[indices_to_remove] = -1e10
+                        
+                        # Subtract max again for stability
+                        logits = logits - logits.max(dim=-1, keepdim=True)[0]
+                        
+                        # Final softmax
+                        probs = torch.softmax(logits, dim=-1)
+                        
+                        # Validate probabilities
+                        if torch.isnan(probs).any() or torch.isinf(probs).any() or (probs < 0).any():
+                            print(f"Warning: Invalid probabilities at step {step}, using greedy decoding")
+                            next_token = torch.argmax(logits, dim=-1, keepdim=True)
+                        else:
+                            # Ensure probabilities sum to 1 (numerical stability)
+                            probs = probs / probs.sum(dim=-1, keepdim=True)
+                            
+                            # Check if we have valid probabilities
+                            if probs.sum() > 0:
+                                next_token = torch.multinomial(probs, num_samples=1)
+                            else:
+                                # Fallback to greedy
+                                next_token = torch.argmax(logits, dim=-1, keepdim=True)
+                    
+                except RuntimeError as e:
+                    print(f"Sampling error at step {step}: {e}, falling back to greedy decoding")
+                    # Fallback: use greedy decoding
+                    next_token = torch.argmax(outputs.logits[:, -1, :], dim=-1, keepdim=True)
                 
                 # Check if we hit end of sequence
                 if next_token.item() == self.tokenizer.eos_token_id:
@@ -569,7 +616,6 @@ class SimpleQwen:
                             last_output_length = 0
                     else:
                         # Text contains incomplete unicode, keep buffering
-                        # But don't let buffer grow too large
                         if len(decode_buffer) > 50:
                             # Force output and reset
                             clean_text = full_decoded[last_output_length:].rstrip('�')
@@ -597,8 +643,8 @@ class SimpleQwen:
         if decode_buffer:
             try:
                 remaining_text = self.tokenizer.decode(decode_buffer, 
-                                                      skip_special_tokens=False,
-                                                      clean_up_tokenization_spaces=False)
+                                                    skip_special_tokens=False,
+                                                    clean_up_tokenization_spaces=False)
                 final_new_text = remaining_text[last_output_length:].rstrip('�')
                 if final_new_text:
                     yield final_new_text
@@ -607,7 +653,6 @@ class SimpleQwen:
         
         generation_time = time.time() - start_time
         tps = len(generated_token_ids) / generation_time if generation_time > 0 else 0
-        #logging.debug(f"\n[Streaming] Generated {len(generated_token_ids)} tokens in {generation_time:.3f}s. TPS: {tps:.2f}")
         
         # Decode the full response
         if generated_token_ids:
@@ -616,7 +661,7 @@ class SimpleQwen:
             full_response = ""
         
         return full_response
-    
+
     def token_count(self, text: str) -> int:
         """Count tokens in text."""
         tokens = self.tokenizer.encode(text)
@@ -866,7 +911,8 @@ if __name__ == "__main__":
         ws = WebSearch()
         logging.debug(f"SEARCH: {args}")
         query = args.get("query", "unknown")
-        summary = ws.askInternet(query)
+        #summary = ws.askInternet(query)
+        summary = ws.askInternet_google(query)
         return f"WEB SEARCH RESULTS: {summary}"
     
     def get_movies(args):
